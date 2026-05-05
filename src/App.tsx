@@ -10,7 +10,7 @@ import {
 import { 
   Play, History, BarChart2, Settings, Plus, Check, X, AlertCircle, 
   Clock, Trophy, Award, User, Volume2, VolumeX, Trash2, ArrowRight, RefreshCw, Zap,
-  ChevronLeft, Loader2, Undo2, LogOut, Edit2
+  ChevronLeft, Loader2, Undo2, LogOut, Edit2, Minus
 } from 'lucide-react';
 
 // --- Types ---
@@ -20,9 +20,9 @@ interface Player {
   id: string;
   name: string;
   handicap: PlayerHandicap;
-  customScoreOffset?: number | string; // iOSでの入力補助のためstringも許容
-  customTimeOffset?: number | string;  // iOSでの入力補助のためstringも許容
-  isActive?: boolean; // 論理削除用フラグ
+  customScoreOffset?: number | string;
+  customTimeOffset?: number | string; 
+  isActive?: boolean;
 }
 
 interface Round {
@@ -85,10 +85,10 @@ interface HomeProps extends BaseProps {
   setBattleState: (state: BattleState | null) => void;
   isSampleMode: boolean;
   setIsSampleMode: (val: boolean) => void;
+  setMatches: (matches: Match[]) => void;
 }
 
 // --- Firebase Initialization ---
-// React + Vite + Vercel 用。環境変数は import.meta.env のみを使用。
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -138,7 +138,6 @@ const unlockAudio = async () => {
     if (ctx.state === "suspended") {
       await ctx.resume();
     }
-    // 無音の短い音を鳴らして制限を解除
     const oscillator = ctx.createOscillator();
     const gainNode = ctx.createGain();
     oscillator.frequency.value = 1;
@@ -166,13 +165,14 @@ const playBeep = (freq: number, duration: number, type: OscillatorType = "sine",
     oscillator.type = type;
     oscillator.frequency.value = freq;
     
-    gainNode.gain.setValueAtTime(volume, ctx.currentTime);
+    gainNode.gain.setValueAtTime(0, ctx.currentTime);
+    gainNode.gain.linearRampToValueAtTime(volume, ctx.currentTime + 0.01);
     gainNode.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + duration);
     
     oscillator.connect(gainNode);
     gainNode.connect(ctx.destination);
     
-    oscillator.start();
+    oscillator.start(ctx.currentTime);
     oscillator.stop(ctx.currentTime + duration);
   } catch (e) {
     console.error("Audio play error:", e);
@@ -364,7 +364,6 @@ const SetupView = ({ players, setBattleState, soundEnabled, setCurrentView, setE
   const [title, setTitle] = useState('');
   const [timeLimit, setTimeLimit] = useState(30);
 
-  // アクティブなプレイヤーのみを選択可能にする
   const activePlayers = players.filter((p: Player) => p.isActive !== false);
 
   const [playerAId, setPlayerAId] = useState(activePlayers[0]?.id || '');
@@ -382,7 +381,6 @@ const SetupView = ({ players, setBattleState, soundEnabled, setCurrentView, setE
     const pA = players.find((p: Player) => p.id === playerAId);
     const pB = players.find((p: Player) => p.id === playerBId);
     
-    // ハンデ 小学生の初期スコアを +3 (Numberで明示的にキャストして安全にする)
     let scoreA = pA?.handicap === 'primary' ? 3 : (pA?.handicap === 'custom' ? (Number(pA?.customScoreOffset) || 0) : 0);
     let scoreB = pB?.handicap === 'primary' ? 3 : (pB?.handicap === 'custom' ? (Number(pB?.customScoreOffset) || 0) : 0);
 
@@ -490,7 +488,7 @@ const SetupView = ({ players, setBattleState, soundEnabled, setCurrentView, setE
 };
 
 const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCurrentView, saveMatch, setFinishedMatch, setErrorMsg }: any) => {
-  const [timeLeft, setTimeLeft] = useState<number>(battleState?.timeLimitSec || 30);
+  const [timeLeft, setTimeLeft] = useState(battleState?.timeLimitSec || 30);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{show: boolean, result: 'correct'|'incorrect'|'timeout'|null}>({show: false, result: null});
   const [showFinishConfirm, setShowFinishConfirm] = useState(false);
@@ -522,7 +520,6 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
 
     if (timeLeft <= 0) {
       if (soundEnabled) {
-        // 0秒になったら終了ブザーを鳴らす
         playBeep(220, 0.8, 'sawtooth', 0.8);
       }
       setIsTimerRunning(false);
@@ -533,7 +530,6 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
     const timerId = setInterval(() => {
       setTimeLeft((prev: number) => {
         const next = prev - 1;
-        // 秒が変わるごとの「カン」音 (0秒時は上で処理するので除く)
         if (soundEnabled && next > 0) {
           playBeep(900, 0.04, 'square', 0.35);
         }
@@ -659,8 +655,8 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
 
     if (soundEnabled) {
       await unlockAudio();
-      playBeep(440, 0.35, "triangle", 0.8);
-      setTimeout(() => playBeep(220, 0.8, "triangle", 0.8), 250);
+      playBeep(600, 1.5, "sine", 1.0);
+      setTimeout(() => playBeep(600, 2.0, "sine", 1.0), 800);
     }
 
     const success = await saveMatch(matchData);
@@ -672,7 +668,6 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
       setCurrentView('result');
     }
   };
-
 
   return (
     <div className="flex flex-col h-full bg-slate-50 relative">
@@ -727,7 +722,10 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
             onClick={async () => {
               if (soundEnabled) {
                 await unlockAudio();
-                playBeep(660, 0.12, "square", 0.7);
+                playBeep(523.25, 0.1, "sine", 0.6);
+                setTimeout(() => playBeep(659.25, 0.1, "sine", 0.6), 100);
+                setTimeout(() => playBeep(783.99, 0.1, "sine", 0.6), 200);
+                setTimeout(() => playBeep(1046.50, 0.3, "sine", 0.6), 300);
               }
               setIsTimerRunning(true);
             }}
@@ -1398,8 +1396,18 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
     setEditingPlayers(prev => prev.map(p => p.id === id ? { ...p, [field]: value } : p));
   };
 
+  const adjustCustomValue = (id: string, field: 'customScoreOffset' | 'customTimeOffset', amount: number) => {
+    setEditingPlayers(prev => prev.map(p => {
+      if (p.id === id) {
+        const currentValue = Number(p[field]) || 0;
+        return { ...p, [field]: currentValue + amount };
+      }
+      return p;
+    }));
+  };
+
   const addPlayer = () => {
-    const newP: Player = { id: 'p_' + Date.now(), name: 'なまえ', handicap: 'none', isActive: true };
+    const newP: Player = { id: 'p_' + Date.now(), name: 'なまえ', handicap: 'none', isActive: true, customScoreOffset: 0, customTimeOffset: 0 };
     setEditingPlayers([...editingPlayers, newP]);
   };
 
@@ -1416,13 +1424,14 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
       setErrorMsg('名前が空のプレイヤーがいます。');
       return;
     }
-    const normalizedPlayers: Player[] = editingPlayers.map(p => ({
-      ...p,
-      customScoreOffset: p.handicap === 'custom' ? (Number(p.customScoreOffset) || 0) : (p.customScoreOffset !== undefined ? Number(p.customScoreOffset) || 0 : undefined),
-      customTimeOffset: p.handicap === 'custom' ? (Number(p.customTimeOffset) || 0) : (p.customTimeOffset !== undefined ? Number(p.customTimeOffset) || 0 : undefined),
-    }));
     setIsSaving(true);
-    await savePlayers(normalizedPlayers);
+    // 保存時に string 型になっている可能性がある offset を number 型に変換する
+    const playersToSave = editingPlayers.map(p => ({
+      ...p,
+      customScoreOffset: Number(p.customScoreOffset) || 0,
+      customTimeOffset: Number(p.customTimeOffset) || 0,
+    }));
+    await savePlayers(playersToSave);
     setIsSaving(false);
     setCurrentView('home');
   };
@@ -1455,41 +1464,118 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
           </div>
           
           <div className="flex flex-col gap-4">
-            {activeEditingPlayers.map(p => (
-              <div key={p.id} className="border border-slate-100 rounded-xl p-3 bg-slate-50 relative flex gap-3 items-start flex-wrap sm:flex-nowrap">
-                 <div className="flex-1 w-full">
-                    <input 
-                      type="text" 
-                      value={p.name} 
-                      onChange={e => updatePlayer(p.id, 'name', e.target.value)} 
-                      className="w-full font-bold text-lg p-3 rounded-lg border border-slate-200 mb-3 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                    <select 
-                      value={p.handicap} 
-                      onChange={e => updatePlayer(p.id, 'handicap', e.target.value)}
-                      className="w-full p-3 text-sm rounded-lg border border-slate-200 bg-white font-bold text-slate-600 mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                       <option value="none">ハンデなし</option>
-                       <option value="primary">小学生 (初期スコア+3)</option>
-                       <option value="junior">中学生 (回答時間-5秒)</option>
-                       <option value="custom">カスタム設定</option>
-                    </select>
-                    {p.handicap === 'custom' && (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 w-full">
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 mb-1">初期スコア(+)</label>
-                          <input type="text" inputMode="numeric" value={p.customScoreOffset ?? ''} onChange={e => updatePlayer(p.id, 'customScoreOffset', e.target.value.replace(/[^0-9]/g, ''))} className="w-full border border-slate-200 rounded-lg p-3 text-base font-bold bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例: 3" />
+            {activeEditingPlayers.map((p, index) => (
+              <div key={p.id} className={`relative flex flex-col gap-3 ${index !== 0 ? 'pt-6 border-t border-slate-100' : ''}`}>
+                 <div className="flex items-center gap-3">
+                    <div className="flex-1 w-full min-w-[200px]">
+                      <input 
+                        type="text" 
+                        value={p.name} 
+                        onChange={e => updatePlayer(p.id, 'name', e.target.value)} 
+                        className="w-full font-bold text-lg p-3 rounded-lg border border-slate-200 mb-3 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        placeholder="プレイヤー名"
+                      />
+                      <select 
+                        value={p.handicap} 
+                        onChange={e => updatePlayer(p.id, 'handicap', e.target.value)}
+                        className="w-full p-3 text-sm rounded-lg border border-slate-200 bg-white font-bold text-slate-600 mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                         <option value="none">ハンデなし</option>
+                         <option value="primary">小学生 (初期スコア+3)</option>
+                         <option value="junior">中学生 (回答時間-5秒)</option>
+                         <option value="custom">カスタム設定</option>
+                      </select>
+                      {p.handicap === 'custom' && (
+                        <div className="flex flex-col gap-4 mt-4 w-full bg-slate-50 p-4 rounded-xl border border-slate-200">
+                          {/* 初期スコア設定 (クイックボタン + スコア表示) */}
+                          <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-2 text-center">
+                              初期スコア
+                            </label>
+                            <div className="flex flex-col gap-2">
+                              <div className="flex justify-center gap-2">
+                                <button
+                                  onClick={() => adjustCustomValue(p.id, 'customScoreOffset', -1)}
+                                  className="w-12 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-xl active:bg-slate-100 text-slate-700 shadow-sm"
+                                >
+                                  <Minus className="w-6 h-6" />
+                                </button>
+                                <div className="w-24 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-xl font-black text-2xl text-slate-800 shadow-inner">
+                                  {(Number(p.customScoreOffset) || 0) > 0 ? '+' : ''}
+                                  {Number(p.customScoreOffset) || 0}
+                                </div>
+                                <button
+                                  onClick={() => adjustCustomValue(p.id, 'customScoreOffset', 1)}
+                                  className="w-12 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-xl active:bg-slate-100 text-slate-700 shadow-sm"
+                                >
+                                  <Plus className="w-6 h-6" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="w-full h-px bg-slate-200 my-1"></div>
+
+                          {/* 回答時間増減設定 (クイックボタン + 時間表示) */}
+                          <div>
+                            <label className="block text-xs font-bold text-slate-500 mb-2 text-center">
+                              回答時間増減
+                            </label>
+                            <div className="flex flex-col gap-3">
+                              <div className="flex justify-center gap-2">
+                                <button
+                                  onClick={() => adjustCustomValue(p.id, 'customTimeOffset', -1)}
+                                  className="w-12 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-xl active:bg-slate-100 text-slate-700 shadow-sm"
+                                >
+                                  <Minus className="w-6 h-6" />
+                                </button>
+                                <div className="w-32 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-xl font-black text-2xl text-slate-800 shadow-inner">
+                                  {(Number(p.customTimeOffset) || 0) > 0 ? '+' : ''}
+                                  {Number(p.customTimeOffset) || 0}秒
+                                </div>
+                                <button
+                                  onClick={() => adjustCustomValue(p.id, 'customTimeOffset', 1)}
+                                  className="w-12 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-xl active:bg-slate-100 text-slate-700 shadow-sm"
+                                >
+                                  <Plus className="w-6 h-6" />
+                                </button>
+                              </div>
+
+                              <div className="flex justify-center gap-2">
+                                <button
+                                  onClick={() => adjustCustomValue(p.id, 'customTimeOffset', -10)}
+                                  className="flex-1 max-w-[80px] h-11 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-600 active:bg-slate-100 shadow-sm transition-colors"
+                                >
+                                  -10秒
+                                </button>
+                                <button
+                                  onClick={() => adjustCustomValue(p.id, 'customTimeOffset', -5)}
+                                  className="flex-1 max-w-[80px] h-11 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-600 active:bg-slate-100 shadow-sm transition-colors"
+                                >
+                                  -5秒
+                                </button>
+                                <button
+                                  onClick={() => adjustCustomValue(p.id, 'customTimeOffset', 5)}
+                                  className="flex-1 max-w-[80px] h-11 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-600 active:bg-slate-100 shadow-sm transition-colors"
+                                >
+                                  +5秒
+                                </button>
+                                <button
+                                  onClick={() => adjustCustomValue(p.id, 'customTimeOffset', 10)}
+                                  className="flex-1 max-w-[80px] h-11 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-600 active:bg-slate-100 shadow-sm transition-colors"
+                                >
+                                  +10秒
+                                </button>
+                              </div>
+                            </div>
+                          </div>
                         </div>
-                        <div>
-                          <label className="block text-xs font-bold text-slate-500 mb-1">回答時間増減(秒)</label>
-                          <input type="text" inputMode="numeric" value={p.customTimeOffset ?? ''} onChange={e => updatePlayer(p.id, 'customTimeOffset', e.target.value.replace(/[^0-9-]/g, '').replace(/(?!^)-/g, ''))} className="w-full border border-slate-200 rounded-lg p-3 text-base font-bold bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例: 10 または -5" />
-                        </div>
-                      </div>
-                    )}
+                      )}
+                    </div>
+                    <button onClick={() => removePlayer(p.id)} className="p-3 text-red-400 hover:bg-red-50 rounded-lg transition-colors ml-auto self-start mt-1">
+                      <Trash2 className="w-6 h-6" />
+                    </button>
                  </div>
-                 <button onClick={() => removePlayer(p.id)} className="p-3 text-red-400 hover:bg-red-50 rounded-lg transition-colors ml-auto self-start mt-1">
-                   <Trash2 className="w-6 h-6" />
-                 </button>
               </div>
             ))}
           </div>
@@ -1782,14 +1868,15 @@ export default function App() {
         <ErrorToast msg={appError} onClose={() => setAppError('')} />
         
         {currentView === 'home' && (
-          <HomeView
-          battleState={battleState}
-          setBattleState={setBattleState}
-          setCurrentView={setCurrentView}
-          isSampleMode={isSampleMode}
-          setIsSampleMode={setIsSampleMode}
-          setErrorMsg={setAppError}
-        />
+          <HomeView 
+            battleState={battleState} 
+            setBattleState={setBattleState}
+            setCurrentView={setCurrentView} 
+            isSampleMode={isSampleMode} 
+            setIsSampleMode={setIsSampleMode} 
+            setMatches={setMatches} 
+            setErrorMsg={setAppError}
+          />
         )}
         {currentView === 'setup' && (
           <SetupView 
