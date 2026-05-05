@@ -113,27 +113,52 @@ const getPlayersRef = () => collection(db, 'families', FAMILY_ID, 'apps', 'quiz-
 
 const playBeep = (freq: number, duration: number, type: OscillatorType = 'sine', volume: number = 0.5) => {
   try {
-    const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextCtor) return;
+
+    const audioCtx = new AudioContextCtor();
     const oscillator = audioCtx.createOscillator();
     const gainNode = audioCtx.createGain();
     
     oscillator.type = type;
     oscillator.frequency.value = freq;
-    
     oscillator.connect(gainNode);
     gainNode.connect(audioCtx.destination);
     
-    oscillator.start();
     gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
     gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
+    oscillator.start();
+    oscillator.stop(audioCtx.currentTime + duration);
     
-    setTimeout(() => {
-      oscillator.stop();
-      audioCtx.close();
-    }, duration * 1000 + 100);
+    window.setTimeout(() => {
+      audioCtx.close().catch(() => undefined);
+    }, duration * 1000 + 120);
   } catch (e) {
     console.error("Audio play error:", e);
   }
+};
+
+const playTimerStartSound = () => {
+  playBeep(660, 0.12, 'triangle', 0.55);
+  window.setTimeout(() => playBeep(880, 0.16, 'triangle', 0.55), 130);
+};
+
+const playTickSound = () => {
+  // 秒が進んだことが分かる短い「カン」音
+  playBeep(980, 0.035, 'square', 0.18);
+};
+
+const playTimeoutSound = () => {
+  // タイムアップのブザー音
+  playBeep(180, 0.45, 'sawtooth', 0.75);
+  window.setTimeout(() => playBeep(140, 0.65, 'sawtooth', 0.7), 220);
+};
+
+const playFinishGongSound = () => {
+  // 対戦終了のゴング風サウンド
+  playBeep(220, 0.7, 'triangle', 0.85);
+  window.setTimeout(() => playBeep(165, 1.0, 'triangle', 0.65), 180);
+  window.setTimeout(() => playBeep(110, 1.2, 'sine', 0.35), 360);
 };
 
 const DEFAULT_PLAYERS: Player[] = [
@@ -315,7 +340,7 @@ const HomeView = ({ battleState, setBattleState, setCurrentView, isSampleMode, s
   );
 };
 
-const SetupView = ({ players, setBattleState, soundEnabled, setCurrentView, setErrorMsg }: any) => {
+const SetupView = ({ players, setBattleState, setCurrentView, setErrorMsg }: any) => {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [title, setTitle] = useState('');
@@ -358,8 +383,6 @@ const SetupView = ({ players, setBattleState, soundEnabled, setCurrentView, setE
     
     setBattleState(newBattleState);
     localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(newBattleState));
-    
-    if (soundEnabled) playBeep(0, 0.01); 
     
     setCurrentView('battle');
   };
@@ -445,7 +468,7 @@ const SetupView = ({ players, setBattleState, soundEnabled, setCurrentView, setE
 };
 
 const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCurrentView, saveMatch, setFinishedMatch, setErrorMsg }: any) => {
-  const [timeLeft, setTimeLeft] = useState<number>(battleState?.timeLimitSec || 30);
+  const [timeLeft, setTimeLeft] = useState(battleState?.timeLimitSec || 30);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{show: boolean, result: 'correct'|'incorrect'|'timeout'|null}>({show: false, result: null});
   const [showFinishConfirm, setShowFinishConfirm] = useState(false);
@@ -476,17 +499,19 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
     if (!isTimerRunning || confirmDialog.show || showFinishConfirm) return;
 
     if (timeLeft <= 0) {
-      if (soundEnabled) playBeep(300, 1.0, 'sawtooth');
+      if (soundEnabled) {
+        playTimeoutSound();
+      }
       setIsTimerRunning(false);
       setConfirmDialog({show: true, result: 'timeout'});
       return;
     }
 
     const timerId = setInterval(() => {
-      setTimeLeft(prev => {
+      setTimeLeft((prev: number) => {
         const next = prev - 1;
-        if (soundEnabled && next <= 5 && next > 0) {
-          playBeep(880, 0.1, 'sine');
+        if (soundEnabled && next > 0) {
+          playTickSound();
         }
         return next;
       });
@@ -608,6 +633,10 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
       }
     };
 
+    if (soundEnabled) {
+      playFinishGongSound();
+    }
+
     const success = await saveMatch(matchData);
     setIsSaving(false);
     
@@ -668,7 +697,10 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
 
         {!isTimerRunning && timeLeft === effectiveTimeLimit && !confirmDialog.show && (
           <button 
-            onClick={() => setIsTimerRunning(true)}
+            onClick={() => {
+              if (soundEnabled) playTimerStartSound();
+              setIsTimerRunning(true);
+            }}
             className="mt-4 bg-slate-800 text-white font-bold text-2xl py-5 rounded-2xl shadow-xl active:scale-95 transition-transform w-full max-w-xs mx-auto flex justify-center gap-2 items-center"
           >
             <Play fill="currentColor" className="w-6 h-6" /> スタート！
@@ -1389,40 +1421,58 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
           
           <div className="flex flex-col gap-4">
             {activeEditingPlayers.map(p => (
-              <div key={p.id} className="border border-slate-100 rounded-xl p-3 bg-slate-50 relative flex gap-3 items-center">
-                 <div className="flex-1">
-                    <input 
-                      type="text" 
-                      value={p.name} 
-                      onChange={e => updatePlayer(p.id, 'name', e.target.value)} 
-                      className="w-full font-bold text-lg p-2 rounded border border-slate-200 mb-2 bg-white"
-                    />
-                    <select 
-                      value={p.handicap} 
-                      onChange={e => updatePlayer(p.id, 'handicap', e.target.value)}
-                      className="w-full p-2 text-sm rounded border border-slate-200 bg-white font-bold text-slate-600 mb-2"
-                    >
-                       <option value="none">ハンデなし</option>
-                       <option value="primary">小学生 (初期スコア+3)</option>
-                       <option value="junior">中学生 (回答時間-5秒)</option>
-                       <option value="custom">カスタム設定</option>
-                    </select>
-                    {p.handicap === 'custom' && (
-                      <div className="flex gap-2 text-xs">
-                        <div className="flex-1">
-                          <label className="block text-slate-500 mb-1">初期スコア(+)</label>
-                          <input type="number" min="0" value={p.customScoreOffset || 0} onChange={e => updatePlayer(p.id, 'customScoreOffset', parseInt(e.target.value) || 0)} className="w-full p-2 border rounded" />
-                        </div>
-                        <div className="flex-1">
-                          <label className="block text-slate-500 mb-1">回答時間増減(秒)</label>
-                          <input type="number" value={p.customTimeOffset || 0} onChange={e => updatePlayer(p.id, 'customTimeOffset', parseInt(e.target.value) || 0)} className="w-full p-2 border rounded" placeholder="例: 10 または -5" />
-                        </div>
-                      </div>
-                    )}
+              <div key={p.id} className="border border-slate-100 rounded-xl p-4 bg-slate-50 flex flex-col gap-3">
+                 <div className="flex items-start gap-3">
+                   <div className="flex-1 min-w-0">
+                      <input 
+                        type="text" 
+                        value={p.name} 
+                        onChange={e => updatePlayer(p.id, 'name', e.target.value)} 
+                        className="w-full font-bold text-lg p-3 rounded-xl border border-slate-200 bg-white"
+                      />
+                   </div>
+                   <button onClick={() => removePlayer(p.id)} className="p-3 text-red-400 bg-white hover:bg-red-50 rounded-xl border border-red-100 transition-colors shrink-0">
+                     <Trash2 className="w-5 h-5" />
+                   </button>
                  </div>
-                 <button onClick={() => removePlayer(p.id)} className="p-3 text-red-400 hover:bg-red-50 rounded-lg transition-colors">
-                   <Trash2 className="w-5 h-5" />
-                 </button>
+
+                 <select 
+                   value={p.handicap} 
+                   onChange={e => updatePlayer(p.id, 'handicap', e.target.value)}
+                   className="w-full p-3 text-sm rounded-xl border border-slate-200 bg-white font-bold text-slate-700"
+                 >
+                    <option value="none">ハンデなし</option>
+                    <option value="primary">小学生 (初期スコア+3)</option>
+                    <option value="junior">中学生 (回答時間-5秒)</option>
+                    <option value="custom">カスタム設定</option>
+                 </select>
+
+                 {p.handicap === 'custom' && (
+                   <div className="grid grid-cols-1 gap-3 text-sm w-full rounded-xl bg-blue-50 border border-blue-100 p-3">
+                     <div>
+                       <label className="block text-slate-600 font-bold mb-1">初期スコア（+）</label>
+                       <input 
+                         type="number" 
+                         min="0" 
+                         inputMode="numeric"
+                         value={p.customScoreOffset || 0} 
+                         onChange={e => updatePlayer(p.id, 'customScoreOffset', Number.parseInt(e.target.value, 10) || 0)} 
+                         className="w-full p-3 border border-slate-200 rounded-xl bg-white font-bold text-lg" 
+                       />
+                     </div>
+                     <div>
+                       <label className="block text-slate-600 font-bold mb-1">回答時間増減（秒）</label>
+                       <input 
+                         type="number" 
+                         inputMode="numeric"
+                         value={p.customTimeOffset || 0} 
+                         onChange={e => updatePlayer(p.id, 'customTimeOffset', Number.parseInt(e.target.value, 10) || 0)} 
+                         className="w-full p-3 border border-slate-200 rounded-xl bg-white font-bold text-lg" 
+                         placeholder="例: 10 または -5" 
+                       />
+                     </div>
+                   </div>
+                 )}
               </div>
             ))}
           </div>
