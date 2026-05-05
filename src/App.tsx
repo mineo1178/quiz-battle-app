@@ -20,8 +20,8 @@ interface Player {
   id: string;
   name: string;
   handicap: PlayerHandicap;
-  customScoreOffset?: number;
-  customTimeOffset?: number;
+  customScoreOffset?: number | string; // iOSでの入力補助のためstringも許容
+  customTimeOffset?: number | string;  // iOSでの入力補助のためstringも許容
   isActive?: boolean; // 論理削除用フラグ
 }
 
@@ -382,9 +382,9 @@ const SetupView = ({ players, setBattleState, soundEnabled, setCurrentView, setE
     const pA = players.find((p: Player) => p.id === playerAId);
     const pB = players.find((p: Player) => p.id === playerBId);
     
-    // ハンデ 小学生の初期スコアを +3
-    let scoreA = pA?.handicap === 'primary' ? 3 : (pA?.handicap === 'custom' ? (pA?.customScoreOffset || 0) : 0);
-    let scoreB = pB?.handicap === 'primary' ? 3 : (pB?.handicap === 'custom' ? (pB?.customScoreOffset || 0) : 0);
+    // ハンデ 小学生の初期スコアを +3 (Numberで明示的にキャストして安全にする)
+    let scoreA = pA?.handicap === 'primary' ? 3 : (pA?.handicap === 'custom' ? (Number(pA?.customScoreOffset) || 0) : 0);
+    let scoreB = pB?.handicap === 'primary' ? 3 : (pB?.handicap === 'custom' ? (Number(pB?.customScoreOffset) || 0) : 0);
 
     const newBattleState: BattleState = {
       date,
@@ -507,7 +507,7 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
   const effectiveTimeLimit = useMemo(() => {
     let limit = battleState?.timeLimitSec || 30;
     if (aPlayer?.handicap === 'junior') limit = Math.max(5, limit - 5);
-    else if (aPlayer?.handicap === 'custom') limit = Math.max(5, limit + (aPlayer?.customTimeOffset || 0));
+    else if (aPlayer?.handicap === 'custom') limit = Math.max(5, limit + (Number(aPlayer?.customTimeOffset) || 0));
     return limit;
   }, [battleState?.timeLimitSec, aPlayer]);
 
@@ -672,6 +672,7 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
       setCurrentView('result');
     }
   };
+
 
   return (
     <div className="flex flex-col h-full bg-slate-50 relative">
@@ -1415,8 +1416,13 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
       setErrorMsg('名前が空のプレイヤーがいます。');
       return;
     }
+    const normalizedPlayers: Player[] = editingPlayers.map(p => ({
+      ...p,
+      customScoreOffset: p.handicap === 'custom' ? (Number(p.customScoreOffset) || 0) : (p.customScoreOffset !== undefined ? Number(p.customScoreOffset) || 0 : undefined),
+      customTimeOffset: p.handicap === 'custom' ? (Number(p.customTimeOffset) || 0) : (p.customTimeOffset !== undefined ? Number(p.customTimeOffset) || 0 : undefined),
+    }));
     setIsSaving(true);
-    await savePlayers(editingPlayers);
+    await savePlayers(normalizedPlayers);
     setIsSaving(false);
     setCurrentView('home');
   };
@@ -1472,11 +1478,11 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 w-full">
                         <div>
                           <label className="block text-xs font-bold text-slate-500 mb-1">初期スコア(+)</label>
-                          <input type="number" min="0" value={p.customScoreOffset ?? 0} onChange={e => updatePlayer(p.id, 'customScoreOffset', Number(e.target.value))} className="w-full border border-slate-200 rounded-lg p-3 text-base font-bold bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                          <input type="text" inputMode="numeric" value={p.customScoreOffset ?? ''} onChange={e => updatePlayer(p.id, 'customScoreOffset', e.target.value.replace(/[^0-9]/g, ''))} className="w-full border border-slate-200 rounded-lg p-3 text-base font-bold bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例: 3" />
                         </div>
                         <div>
                           <label className="block text-xs font-bold text-slate-500 mb-1">回答時間増減(秒)</label>
-                          <input type="number" value={p.customTimeOffset ?? 0} onChange={e => updatePlayer(p.id, 'customTimeOffset', Number(e.target.value))} className="w-full border border-slate-200 rounded-lg p-3 text-base font-bold bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例: 10 または -5" />
+                          <input type="text" inputMode="numeric" value={p.customTimeOffset ?? ''} onChange={e => updatePlayer(p.id, 'customTimeOffset', e.target.value.replace(/[^0-9-]/g, '').replace(/(?!^)-/g, ''))} className="w-full border border-slate-200 rounded-lg p-3 text-base font-bold bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例: 10 または -5" />
                         </div>
                       </div>
                     )}
@@ -1776,14 +1782,14 @@ export default function App() {
         <ErrorToast msg={appError} onClose={() => setAppError('')} />
         
         {currentView === 'home' && (
-          <HomeView 
-            battleState={battleState} 
-            setBattleState={setBattleState}
-            setCurrentView={setCurrentView} 
-            isSampleMode={isSampleMode} 
-            setIsSampleMode={setIsSampleMode} 
-            setErrorMsg={setAppError}
-          />
+          <HomeView
+          battleState={battleState}
+          setBattleState={setBattleState}
+          setCurrentView={setCurrentView}
+          isSampleMode={isSampleMode}
+          setIsSampleMode={setIsSampleMode}
+          setErrorMsg={setAppError}
+        />
         )}
         {currentView === 'setup' && (
           <SetupView 
