@@ -88,6 +88,7 @@ interface HomeProps extends BaseProps {
 }
 
 // --- Firebase Initialization ---
+// React + Vite + Vercel 用。環境変数は import.meta.env のみを使用。
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
@@ -111,54 +112,71 @@ const STORAGE_KEY_STATE = 'quiz_battle_saved_state';
 const getMatchesRef = () => collection(db, 'families', FAMILY_ID, 'apps', 'quiz-battle', 'matches');
 const getPlayersRef = () => collection(db, 'families', FAMILY_ID, 'apps', 'quiz-battle', 'players');
 
-const playBeep = (freq: number, duration: number, type: OscillatorType = 'sine', volume: number = 0.5) => {
-  try {
-    const AudioContextCtor = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextCtor) return;
+// --- Audio System (iOS / PWA Support) ---
+let sharedAudioCtx: AudioContext | null = null;
 
-    const audioCtx = new AudioContextCtor();
-    const oscillator = audioCtx.createOscillator();
-    const gainNode = audioCtx.createGain();
-    
-    oscillator.type = type;
-    oscillator.frequency.value = freq;
-    oscillator.connect(gainNode);
-    gainNode.connect(audioCtx.destination);
-    
-    gainNode.gain.setValueAtTime(volume, audioCtx.currentTime);
-    gainNode.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + duration);
-    oscillator.start();
-    oscillator.stop(audioCtx.currentTime + duration);
-    
-    window.setTimeout(() => {
-      audioCtx.close().catch(() => undefined);
-    }, duration * 1000 + 120);
+const getAudioContext = (): AudioContext | null => {
+  try {
+    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContextClass) return null;
+
+    if (!sharedAudioCtx) {
+      sharedAudioCtx = new AudioContextClass();
+    }
+    return sharedAudioCtx;
   } catch (e) {
-    console.error("Audio play error:", e);
+    console.error("AudioContext init error:", e);
+    return null;
   }
 };
 
-const playTimerStartSound = () => {
-  playBeep(660, 0.12, 'triangle', 0.55);
-  window.setTimeout(() => playBeep(880, 0.16, 'triangle', 0.55), 130);
+const unlockAudio = async () => {
+  const ctx = getAudioContext();
+  if (!ctx) return;
+
+  try {
+    if (ctx.state === "suspended") {
+      await ctx.resume();
+    }
+    // 無音の短い音を鳴らして制限を解除
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    oscillator.frequency.value = 1;
+    gainNode.gain.value = 0.00001;
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    oscillator.start();
+    oscillator.stop(ctx.currentTime + 0.01);
+  } catch (e) {
+    console.error("Audio unlock error:", e);
+  }
 };
 
-const playTickSound = () => {
-  // 秒が進んだことが分かる短い「カン」音
-  playBeep(980, 0.035, 'square', 0.18);
-};
+const playBeep = (freq: number, duration: number, type: OscillatorType = "sine", volume: number = 0.5) => {
+  const ctx = getAudioContext();
+  if (!ctx) return;
 
-const playTimeoutSound = () => {
-  // タイムアップのブザー音
-  playBeep(180, 0.45, 'sawtooth', 0.75);
-  window.setTimeout(() => playBeep(140, 0.65, 'sawtooth', 0.7), 220);
-};
-
-const playFinishGongSound = () => {
-  // 対戦終了のゴング風サウンド
-  playBeep(220, 0.7, 'triangle', 0.85);
-  window.setTimeout(() => playBeep(165, 1.0, 'triangle', 0.65), 180);
-  window.setTimeout(() => playBeep(110, 1.2, 'sine', 0.35), 360);
+  try {
+    if (ctx.state === "suspended") {
+      ctx.resume();
+    }
+    const oscillator = ctx.createOscillator();
+    const gainNode = ctx.createGain();
+    
+    oscillator.type = type;
+    oscillator.frequency.value = freq;
+    
+    gainNode.gain.setValueAtTime(volume, ctx.currentTime);
+    gainNode.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + duration);
+    
+    oscillator.connect(gainNode);
+    gainNode.connect(ctx.destination);
+    
+    oscillator.start();
+    oscillator.stop(ctx.currentTime + duration);
+  } catch (e) {
+    console.error("Audio play error:", e);
+  }
 };
 
 const DEFAULT_PLAYERS: Player[] = [
@@ -217,7 +235,7 @@ const LoginView = ({ setIsSampleMode, setErrorMsg }: any) => {
               type="email" 
               value={email}
               onChange={e => setEmail(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg p-3 bg-slate-50 font-bold"
+              className="w-full border border-slate-200 rounded-lg p-3 bg-slate-50 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
           </div>
@@ -227,7 +245,7 @@ const LoginView = ({ setIsSampleMode, setErrorMsg }: any) => {
               type="password" 
               value={password}
               onChange={e => setPassword(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg p-3 bg-slate-50 font-bold"
+              className="w-full border border-slate-200 rounded-lg p-3 bg-slate-50 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
               required
             />
           </div>
@@ -340,7 +358,7 @@ const HomeView = ({ battleState, setBattleState, setCurrentView, isSampleMode, s
   );
 };
 
-const SetupView = ({ players, setBattleState, setCurrentView, setErrorMsg }: any) => {
+const SetupView = ({ players, setBattleState, soundEnabled, setCurrentView, setErrorMsg }: any) => {
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [title, setTitle] = useState('');
@@ -384,6 +402,10 @@ const SetupView = ({ players, setBattleState, setCurrentView, setErrorMsg }: any
     setBattleState(newBattleState);
     localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(newBattleState));
     
+    if (soundEnabled) {
+      unlockAudio().catch(console.error);
+    }
+    
     setCurrentView('battle');
   };
 
@@ -399,34 +421,34 @@ const SetupView = ({ players, setBattleState, setCurrentView, setErrorMsg }: any
       <div className="p-5 flex flex-col gap-5">
         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
           <label className="block text-sm font-bold text-slate-700 mb-1">対戦日</label>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border rounded-lg p-3 bg-slate-50" />
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border border-slate-200 rounded-lg p-3 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
 
         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
           <label className="block text-sm font-bold text-slate-700 mb-1">カテゴリ</label>
-          <select value={category} onChange={e => setCategory(e.target.value)} className="w-full border rounded-lg p-3 bg-slate-50 appearance-none font-bold text-lg">
+          <select value={category} onChange={e => setCategory(e.target.value)} className="w-full border border-slate-200 rounded-lg p-3 bg-white appearance-none font-bold text-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
             {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
 
         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
           <label className="block text-sm font-bold text-slate-700 mb-1">タイトル (任意)</label>
-          <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder={`${category}クイズ ${date.replace(/-/g, '/')}`} className="w-full border rounded-lg p-3 bg-slate-50" />
+          <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder={`${category}クイズ ${date.replace(/-/g, '/')}`} className="w-full border border-slate-200 rounded-lg p-3 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
 
         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
           <label className="block text-sm font-bold text-slate-700 mb-3">プレイヤー設定</label>
           <div className="flex items-center gap-2 mb-4">
-            <div className="flex-1">
+            <div className="flex-1 w-full min-w-[120px]">
               <span className="text-xs font-bold text-blue-500 mb-1 block">プレイヤーA (赤)</span>
-              <select value={playerAId} onChange={e => setPlayerAId(e.target.value)} className="w-full border-2 border-red-200 rounded-lg p-2 font-bold bg-red-50 text-red-900">
+              <select value={playerAId} onChange={e => setPlayerAId(e.target.value)} className="w-full border-2 border-red-200 rounded-lg p-3 font-bold bg-red-50 text-red-900 focus:outline-none focus:ring-2 focus:ring-red-500">
                 {activePlayers.map((p: Player) => <option key={p.id} value={p.id}>{p.name} {p.handicap === 'primary'?'(小)':p.handicap === 'junior'?'(中)':p.handicap === 'custom'?'(カ)':' '}</option>)}
               </select>
             </div>
             <span className="font-bold text-slate-400 mt-5">VS</span>
-            <div className="flex-1">
+            <div className="flex-1 w-full min-w-[120px]">
               <span className="text-xs font-bold text-blue-500 mb-1 block">プレイヤーB (青)</span>
-              <select value={playerBId} onChange={e => setPlayerBId(e.target.value)} className="w-full border-2 border-blue-200 rounded-lg p-2 font-bold bg-blue-50 text-blue-900">
+              <select value={playerBId} onChange={e => setPlayerBId(e.target.value)} className="w-full border-2 border-blue-200 rounded-lg p-3 font-bold bg-blue-50 text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
                 {activePlayers.map((p: Player) => <option key={p.id} value={p.id}>{p.name} {p.handicap === 'primary'?'(小)':p.handicap === 'junior'?'(中)':p.handicap === 'custom'?'(カ)':' '}</option>)}
               </select>
             </div>
@@ -437,13 +459,13 @@ const SetupView = ({ players, setBattleState, setCurrentView, setErrorMsg }: any
             <div className="flex gap-2">
               <button 
                 onClick={() => setFirstTurn('A')}
-                className={`flex-1 p-2 rounded-lg font-bold border-2 transition-all ${firstTurn === 'A' ? 'bg-red-500 text-white border-red-600' : 'bg-white text-slate-500 border-slate-200'}`}
+                className={`flex-1 p-3 rounded-lg font-bold border-2 transition-all ${firstTurn === 'A' ? 'bg-red-500 text-white border-red-600' : 'bg-white text-slate-500 border-slate-200'}`}
               >
                 プレイヤーA
               </button>
               <button 
                 onClick={() => setFirstTurn('B')}
-                className={`flex-1 p-2 rounded-lg font-bold border-2 transition-all ${firstTurn === 'B' ? 'bg-blue-500 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200'}`}
+                className={`flex-1 p-3 rounded-lg font-bold border-2 transition-all ${firstTurn === 'B' ? 'bg-blue-500 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200'}`}
               >
                 プレイヤーB
               </button>
@@ -468,7 +490,7 @@ const SetupView = ({ players, setBattleState, setCurrentView, setErrorMsg }: any
 };
 
 const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCurrentView, saveMatch, setFinishedMatch, setErrorMsg }: any) => {
-  const [timeLeft, setTimeLeft] = useState(battleState?.timeLimitSec || 30);
+  const [timeLeft, setTimeLeft] = useState<number>(battleState?.timeLimitSec || 30);
   const [isTimerRunning, setIsTimerRunning] = useState(false);
   const [confirmDialog, setConfirmDialog] = useState<{show: boolean, result: 'correct'|'incorrect'|'timeout'|null}>({show: false, result: null});
   const [showFinishConfirm, setShowFinishConfirm] = useState(false);
@@ -500,7 +522,8 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
 
     if (timeLeft <= 0) {
       if (soundEnabled) {
-        playTimeoutSound();
+        // 0秒になったら終了ブザーを鳴らす
+        playBeep(220, 0.8, 'sawtooth', 0.8);
       }
       setIsTimerRunning(false);
       setConfirmDialog({show: true, result: 'timeout'});
@@ -510,8 +533,9 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
     const timerId = setInterval(() => {
       setTimeLeft((prev: number) => {
         const next = prev - 1;
+        // 秒が変わるごとの「カン」音 (0秒時は上で処理するので除く)
         if (soundEnabled && next > 0) {
-          playTickSound();
+          playBeep(900, 0.04, 'square', 0.35);
         }
         return next;
       });
@@ -634,7 +658,9 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
     };
 
     if (soundEnabled) {
-      playFinishGongSound();
+      await unlockAudio();
+      playBeep(440, 0.35, "triangle", 0.8);
+      setTimeout(() => playBeep(220, 0.8, "triangle", 0.8), 250);
     }
 
     const success = await saveMatch(matchData);
@@ -697,8 +723,11 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
 
         {!isTimerRunning && timeLeft === effectiveTimeLimit && !confirmDialog.show && (
           <button 
-            onClick={() => {
-              if (soundEnabled) playTimerStartSound();
+            onClick={async () => {
+              if (soundEnabled) {
+                await unlockAudio();
+                playBeep(660, 0.12, "square", 0.7);
+              }
               setIsTimerRunning(true);
             }}
             className="mt-4 bg-slate-800 text-white font-bold text-2xl py-5 rounded-2xl shadow-xl active:scale-95 transition-transform w-full max-w-xs mx-auto flex justify-center gap-2 items-center"
@@ -1421,58 +1450,40 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
           
           <div className="flex flex-col gap-4">
             {activeEditingPlayers.map(p => (
-              <div key={p.id} className="border border-slate-100 rounded-xl p-4 bg-slate-50 flex flex-col gap-3">
-                 <div className="flex items-start gap-3">
-                   <div className="flex-1 min-w-0">
-                      <input 
-                        type="text" 
-                        value={p.name} 
-                        onChange={e => updatePlayer(p.id, 'name', e.target.value)} 
-                        className="w-full font-bold text-lg p-3 rounded-xl border border-slate-200 bg-white"
-                      />
-                   </div>
-                   <button onClick={() => removePlayer(p.id)} className="p-3 text-red-400 bg-white hover:bg-red-50 rounded-xl border border-red-100 transition-colors shrink-0">
-                     <Trash2 className="w-5 h-5" />
-                   </button>
+              <div key={p.id} className="border border-slate-100 rounded-xl p-3 bg-slate-50 relative flex gap-3 items-start flex-wrap sm:flex-nowrap">
+                 <div className="flex-1 w-full">
+                    <input 
+                      type="text" 
+                      value={p.name} 
+                      onChange={e => updatePlayer(p.id, 'name', e.target.value)} 
+                      className="w-full font-bold text-lg p-3 rounded-lg border border-slate-200 mb-3 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <select 
+                      value={p.handicap} 
+                      onChange={e => updatePlayer(p.id, 'handicap', e.target.value)}
+                      className="w-full p-3 text-sm rounded-lg border border-slate-200 bg-white font-bold text-slate-600 mb-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                       <option value="none">ハンデなし</option>
+                       <option value="primary">小学生 (初期スコア+3)</option>
+                       <option value="junior">中学生 (回答時間-5秒)</option>
+                       <option value="custom">カスタム設定</option>
+                    </select>
+                    {p.handicap === 'custom' && (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3 w-full">
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-1">初期スコア(+)</label>
+                          <input type="number" min="0" value={p.customScoreOffset ?? 0} onChange={e => updatePlayer(p.id, 'customScoreOffset', Number(e.target.value))} className="w-full border border-slate-200 rounded-lg p-3 text-base font-bold bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-bold text-slate-500 mb-1">回答時間増減(秒)</label>
+                          <input type="number" value={p.customTimeOffset ?? 0} onChange={e => updatePlayer(p.id, 'customTimeOffset', Number(e.target.value))} className="w-full border border-slate-200 rounded-lg p-3 text-base font-bold bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="例: 10 または -5" />
+                        </div>
+                      </div>
+                    )}
                  </div>
-
-                 <select 
-                   value={p.handicap} 
-                   onChange={e => updatePlayer(p.id, 'handicap', e.target.value)}
-                   className="w-full p-3 text-sm rounded-xl border border-slate-200 bg-white font-bold text-slate-700"
-                 >
-                    <option value="none">ハンデなし</option>
-                    <option value="primary">小学生 (初期スコア+3)</option>
-                    <option value="junior">中学生 (回答時間-5秒)</option>
-                    <option value="custom">カスタム設定</option>
-                 </select>
-
-                 {p.handicap === 'custom' && (
-                   <div className="grid grid-cols-1 gap-3 text-sm w-full rounded-xl bg-blue-50 border border-blue-100 p-3">
-                     <div>
-                       <label className="block text-slate-600 font-bold mb-1">初期スコア（+）</label>
-                       <input 
-                         type="number" 
-                         min="0" 
-                         inputMode="numeric"
-                         value={p.customScoreOffset || 0} 
-                         onChange={e => updatePlayer(p.id, 'customScoreOffset', Number.parseInt(e.target.value, 10) || 0)} 
-                         className="w-full p-3 border border-slate-200 rounded-xl bg-white font-bold text-lg" 
-                       />
-                     </div>
-                     <div>
-                       <label className="block text-slate-600 font-bold mb-1">回答時間増減（秒）</label>
-                       <input 
-                         type="number" 
-                         inputMode="numeric"
-                         value={p.customTimeOffset || 0} 
-                         onChange={e => updatePlayer(p.id, 'customTimeOffset', Number.parseInt(e.target.value, 10) || 0)} 
-                         className="w-full p-3 border border-slate-200 rounded-xl bg-white font-bold text-lg" 
-                         placeholder="例: 10 または -5" 
-                       />
-                     </div>
-                   </div>
-                 )}
+                 <button onClick={() => removePlayer(p.id)} className="p-3 text-red-400 hover:bg-red-50 rounded-lg transition-colors ml-auto self-start mt-1">
+                   <Trash2 className="w-6 h-6" />
+                 </button>
               </div>
             ))}
           </div>
