@@ -107,6 +107,13 @@ const FAMILY_ID = 'oomine-study-2026';
 const CATEGORIES = ['新聞', '日本史', '世界史', '地理', '小説', '理科', 'その他'];
 const COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#6b7280'];
 const STORAGE_KEY_STATE = 'quiz_battle_saved_state';
+const STORAGE_KEY_SOUND_ENABLED = 'quiz_battle_sound_enabled';
+
+const getLocalDateString = () => {
+  const today = new Date();
+  const offset = today.getTimezoneOffset() * 60_000;
+  return new Date(today.getTime() - offset).toISOString().slice(0, 10);
+};
 
 // --- Functions ---
 const getMatchesRef = () => collection(db, 'families', FAMILY_ID, 'apps', 'quiz-battle', 'matches');
@@ -130,14 +137,15 @@ const getAudioContext = (): AudioContext | null => {
   }
 };
 
-const unlockAudio = async () => {
+const unlockAudio = async (): Promise<boolean> => {
   const ctx = getAudioContext();
-  if (!ctx) return;
+  if (!ctx) return false;
 
   try {
     if (ctx.state === "suspended") {
       await ctx.resume();
     }
+    if (ctx.state !== 'running') return false;
     const oscillator = ctx.createOscillator();
     const gainNode = ctx.createGain();
     oscillator.frequency.value = 1;
@@ -146,19 +154,22 @@ const unlockAudio = async () => {
     gainNode.connect(ctx.destination);
     oscillator.start();
     oscillator.stop(ctx.currentTime + 0.01);
+    return true;
   } catch (e) {
     console.error("Audio unlock error:", e);
+    return false;
   }
 };
 
-const playBeep = (freq: number, duration: number, type: OscillatorType = "sine", volume: number = 0.5) => {
+const playBeep = async (freq: number, duration: number, type: OscillatorType = "sine", volume: number = 0.5) => {
   const ctx = getAudioContext();
   if (!ctx) return;
 
   try {
     if (ctx.state === "suspended") {
-      ctx.resume();
+      await ctx.resume();
     }
+    if (ctx.state !== 'running') return;
     const oscillator = ctx.createOscillator();
     const gainNode = ctx.createGain();
     
@@ -177,6 +188,14 @@ const playBeep = (freq: number, duration: number, type: OscillatorType = "sine",
   } catch (e) {
     console.error("Audio play error:", e);
   }
+};
+
+const playStartSound = async () => {
+  if (!await unlockAudio()) return;
+  void playBeep(523.25, 0.1, 'sine', 0.6);
+  window.setTimeout(() => void playBeep(659.25, 0.1, 'sine', 0.6), 100);
+  window.setTimeout(() => void playBeep(783.99, 0.1, 'sine', 0.6), 200);
+  window.setTimeout(() => void playBeep(1046.5, 0.3, 'sine', 0.6), 300);
 };
 
 const DEFAULT_PLAYERS: Player[] = [
@@ -359,7 +378,7 @@ const HomeView = ({ battleState, setBattleState, setCurrentView, isSampleMode, s
 };
 
 const SetupView = ({ players, setBattleState, soundEnabled, setCurrentView, setErrorMsg }: any) => {
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(getLocalDateString);
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [title, setTitle] = useState('');
   const [timeLimit, setTimeLimit] = useState(30);
@@ -381,8 +400,8 @@ const SetupView = ({ players, setBattleState, soundEnabled, setCurrentView, setE
     const pA = players.find((p: Player) => p.id === playerAId);
     const pB = players.find((p: Player) => p.id === playerBId);
     
-    let scoreA = pA?.handicap === 'primary' ? 3 : (pA?.handicap === 'custom' ? (Number(pA?.customScoreOffset) || 0) : 0);
-    let scoreB = pB?.handicap === 'primary' ? 3 : (pB?.handicap === 'custom' ? (Number(pB?.customScoreOffset) || 0) : 0);
+    const scoreA = pA?.handicap === 'primary' ? 3 : (pA?.handicap === 'custom' ? (Number(pA?.customScoreOffset) || 0) : 0);
+    const scoreB = pB?.handicap === 'primary' ? 3 : (pB?.handicap === 'custom' ? (Number(pB?.customScoreOffset) || 0) : 0);
 
     const newBattleState: BattleState = {
       date,
@@ -401,7 +420,7 @@ const SetupView = ({ players, setBattleState, soundEnabled, setCurrentView, setE
     localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(newBattleState));
     
     if (soundEnabled) {
-      unlockAudio().catch(console.error);
+      void unlockAudio();
     }
     
     setCurrentView('battle');
@@ -520,7 +539,7 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
 
     if (timeLeft <= 0) {
       if (soundEnabled) {
-        playBeep(220, 0.8, 'sawtooth', 0.8);
+        void playBeep(220, 0.8, 'sawtooth', 0.8);
       }
       setIsTimerRunning(false);
       setConfirmDialog({show: true, result: 'timeout'});
@@ -531,7 +550,7 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
       setTimeLeft((prev: number) => {
         const next = prev - 1;
         if (soundEnabled && next > 0) {
-          playBeep(900, 0.04, 'square', 0.35);
+          void playBeep(900, 0.04, 'square', 0.35);
         }
         return next;
       });
@@ -655,8 +674,8 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
 
     if (soundEnabled) {
       await unlockAudio();
-      playBeep(600, 1.5, "sine", 1.0);
-      setTimeout(() => playBeep(600, 2.0, "sine", 1.0), 800);
+      void playBeep(600, 1.5, "sine", 1.0);
+      window.setTimeout(() => void playBeep(600, 2.0, "sine", 1.0), 800);
     }
 
     const success = await saveMatch(matchData);
@@ -719,13 +738,10 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
 
         {!isTimerRunning && timeLeft === effectiveTimeLimit && !confirmDialog.show && (
           <button 
+            onPointerDown={() => { if (soundEnabled) void unlockAudio(); }}
             onClick={async () => {
               if (soundEnabled) {
-                await unlockAudio();
-                playBeep(523.25, 0.1, "sine", 0.6);
-                setTimeout(() => playBeep(659.25, 0.1, "sine", 0.6), 100);
-                setTimeout(() => playBeep(783.99, 0.1, "sine", 0.6), 200);
-                setTimeout(() => playBeep(1046.50, 0.3, "sine", 0.6), 300);
+                await playStartSound();
               }
               setIsTimerRunning(true);
             }}
@@ -1589,12 +1605,27 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
                 <span className="font-bold text-slate-700">効果音</span>
               </div>
               <button 
-                onClick={() => setSoundEnabled(!soundEnabled)}
+                onPointerDown={() => { if (soundEnabled) void unlockAudio(); }}
+                onClick={() => {
+                  const nextEnabled = !soundEnabled;
+                  setSoundEnabled(nextEnabled);
+                  if (nextEnabled) void unlockAudio();
+                }}
                 className={`w-14 h-8 rounded-full relative transition-colors ${soundEnabled ? 'bg-blue-500' : 'bg-slate-300'}`}
               >
                 <div className={`absolute top-1 w-6 h-6 rounded-full bg-white transition-transform ${soundEnabled ? 'left-7' : 'left-1'}`} />
               </button>
            </div>
+           {soundEnabled && (
+             <button
+               type="button"
+               onPointerDown={() => void unlockAudio()}
+               onClick={() => void playStartSound()}
+               className="mt-4 w-full rounded-xl bg-blue-50 p-3 text-sm font-bold text-blue-700 transition-colors hover:bg-blue-100 active:scale-[0.98]"
+             >
+               効果音を試聴する
+             </button>
+           )}
            
            {isSampleMode && (
               <div className="mt-4 p-3 bg-amber-50 text-amber-800 text-sm font-bold rounded-lg flex gap-2">
@@ -1631,7 +1662,7 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
 export default function App() {
   const [user, setUser] = useState<FirebaseAuthUser | null>(null);
   const [isSampleMode, setIsSampleMode] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem(STORAGE_KEY_SOUND_ENABLED) !== 'false');
   
   const [currentView, setCurrentView] = useState<'home' | 'setup' | 'battle' | 'result' | 'history' | 'history_detail' | 'stats' | 'settings'>('home');
   
@@ -1748,6 +1779,10 @@ export default function App() {
     }
   }, []);
 
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY_SOUND_ENABLED, String(soundEnabled));
+  }, [soundEnabled]);
+
   const saveMatch = async (matchData: Match): Promise<boolean> => {
     if (isSampleMode) {
       setMatches(prev => {
@@ -1860,7 +1895,7 @@ export default function App() {
     <div className="w-full max-w-md mx-auto h-screen bg-slate-100 overflow-hidden shadow-2xl relative select-none font-sans text-slate-800 flex flex-col">
       {isSampleMode && (
         <div className="bg-amber-500 text-white text-[11px] font-bold py-1 px-4 text-center z-50 flex items-center justify-center gap-1 shrink-0">
-          <AlertCircle className="w-3 h-3" /> サンプルモード中（保存されません）
+          <AlertCircle className="w-3 h-3" /> サンプルモード中（この端末にのみ保存されます）
         </div>
       )}
       
