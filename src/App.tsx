@@ -108,12 +108,27 @@ const CATEGORIES = ['新聞', '日本史', '世界史', '地理', '小説', '理
 const COLORS = ['#3b82f6', '#ef4444', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#6b7280'];
 const STORAGE_KEY_STATE = 'quiz_battle_saved_state';
 const STORAGE_KEY_SOUND_ENABLED = 'quiz_battle_sound_enabled';
+const DEVICE_TEST_PARAM = 'deviceTest';
+const isDeviceTestMode = new URLSearchParams(window.location.search).get(DEVICE_TEST_PARAM) === '1';
 
 const getLocalDateString = () => {
   const today = new Date();
   const offset = today.getTimezoneOffset() * 60_000;
   return new Date(today.getTime() - offset).toISOString().slice(0, 10);
 };
+
+type AudioTestResult = '未実行' | '再生成功' | '解除失敗' | '効果音OFF';
+
+interface DeviceDiagnostics {
+  device: 'iOS' | 'Android' | 'その他';
+  launchMode: 'ブラウザ' | 'ホーム画面 / standalone';
+  audioState: AudioContextState | '未作成';
+  visibilityState: DocumentVisibilityState;
+  soundStorageValue: string | null;
+  localDate: string;
+  lastAudioTest: AudioTestResult;
+  userAgent: string;
+}
 
 // --- Functions ---
 const getMatchesRef = () => collection(db, 'families', FAMILY_ID, 'apps', 'quiz-battle', 'matches');
@@ -190,12 +205,32 @@ const playBeep = async (freq: number, duration: number, type: OscillatorType = "
   }
 };
 
-const playStartSound = async () => {
-  if (!await unlockAudio()) return;
+const playStartSound = async (isUnlocked = false): Promise<boolean> => {
+  if (!isUnlocked && !await unlockAudio()) return false;
   void playBeep(523.25, 0.1, 'sine', 0.6);
   window.setTimeout(() => void playBeep(659.25, 0.1, 'sine', 0.6), 100);
   window.setTimeout(() => void playBeep(783.99, 0.1, 'sine', 0.6), 200);
   window.setTimeout(() => void playBeep(1046.5, 0.3, 'sine', 0.6), 300);
+  return true;
+};
+
+const getDeviceDiagnostics = (lastAudioTest: AudioTestResult): DeviceDiagnostics => {
+  const userAgent = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const device: DeviceDiagnostics['device'] = isIOS ? 'iOS' : /Android/.test(userAgent) ? 'Android' : 'その他';
+  const navigatorWithStandalone = navigator as Navigator & { standalone?: boolean };
+  const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigatorWithStandalone.standalone === true;
+
+  return {
+    device,
+    launchMode: isStandalone ? 'ホーム画面 / standalone' : 'ブラウザ',
+    audioState: sharedAudioCtx?.state ?? '未作成',
+    visibilityState: document.visibilityState,
+    soundStorageValue: localStorage.getItem(STORAGE_KEY_SOUND_ENABLED),
+    localDate: getLocalDateString(),
+    lastAudioTest,
+    userAgent,
+  };
 };
 
 const DEFAULT_PLAYERS: Player[] = [
@@ -1405,6 +1440,23 @@ const StatsView = ({ matches, players, setCurrentView }: any) => {
 const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setIsSampleMode, soundEnabled, setSoundEnabled, setErrorMsg }: any) => {
   const [editingPlayers, setEditingPlayers] = useState<Player[]>(JSON.parse(JSON.stringify(players)));
   const [isSaving, setIsSaving] = useState(false);
+  const [deviceDiagnostics, setDeviceDiagnostics] = useState<DeviceDiagnostics>(() => getDeviceDiagnostics('未実行'));
+
+  const refreshDeviceDiagnostics = useCallback((lastAudioTest?: AudioTestResult) => {
+    setDeviceDiagnostics(previous => getDeviceDiagnostics(lastAudioTest ?? previous.lastAudioTest));
+  }, []);
+
+  useEffect(() => {
+    if (!isDeviceTestMode) return;
+
+    const handleEnvironmentChange = () => refreshDeviceDiagnostics();
+    document.addEventListener('visibilitychange', handleEnvironmentChange);
+    window.addEventListener('focus', handleEnvironmentChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleEnvironmentChange);
+      window.removeEventListener('focus', handleEnvironmentChange);
+    };
+  }, [refreshDeviceDiagnostics]);
 
   const activeEditingPlayers = editingPlayers.filter(p => p.isActive !== false);
 
@@ -1459,6 +1511,17 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
       if (isSampleMode) setIsSampleMode(false);
       setCurrentView('home');
     }
+  };
+
+  const handleDeviceAudioTest = async () => {
+    if (!soundEnabled) {
+      refreshDeviceDiagnostics('効果音OFF');
+      return;
+    }
+
+    const isUnlocked = await unlockAudio();
+    const result = isUnlocked && await playStartSound(true) ? '再生成功' : '解除失敗';
+    refreshDeviceDiagnostics(result);
   };
 
   return (
@@ -1610,6 +1673,7 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
                   const nextEnabled = !soundEnabled;
                   setSoundEnabled(nextEnabled);
                   if (nextEnabled) void unlockAudio();
+                  if (isDeviceTestMode) window.setTimeout(() => refreshDeviceDiagnostics(), 0);
                 }}
                 className={`w-14 h-8 rounded-full relative transition-colors ${soundEnabled ? 'bg-blue-500' : 'bg-slate-300'}`}
               >
@@ -1625,6 +1689,39 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
              >
                効果音を試聴する
              </button>
+           )}
+
+           {isDeviceTestMode && (
+             <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm text-slate-700">
+               <h4 className="mb-3 font-black text-violet-800">実機確認モード</h4>
+               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 break-words">
+                 <dt className="font-bold text-slate-500">端末</dt><dd>{deviceDiagnostics.device}</dd>
+                 <dt className="font-bold text-slate-500">起動方法</dt><dd>{deviceDiagnostics.launchMode}</dd>
+                 <dt className="font-bold text-slate-500">AudioContext</dt><dd>{deviceDiagnostics.audioState}</dd>
+                 <dt className="font-bold text-slate-500">表示状態</dt><dd>{deviceDiagnostics.visibilityState}</dd>
+                 <dt className="font-bold text-slate-500">効果音設定</dt><dd>{soundEnabled ? 'ON' : 'OFF'}</dd>
+                 <dt className="font-bold text-slate-500">保存値</dt><dd>{deviceDiagnostics.soundStorageValue ?? '未保存'}</dd>
+                 <dt className="font-bold text-slate-500">ローカル日付</dt><dd>{deviceDiagnostics.localDate}</dd>
+                 <dt className="font-bold text-slate-500">最終音声テスト</dt><dd>{deviceDiagnostics.lastAudioTest}</dd>
+               </dl>
+               <p className="mt-3 break-all text-[10px] leading-relaxed text-slate-500">UA: {deviceDiagnostics.userAgent}</p>
+               <div className="mt-4 grid grid-cols-2 gap-2">
+                 <button
+                   type="button"
+                   onClick={() => refreshDeviceDiagnostics()}
+                   className="rounded-lg bg-white px-3 py-2 font-bold text-violet-700 shadow-sm ring-1 ring-violet-200 active:scale-[0.98]"
+                 >
+                   状態更新
+                 </button>
+                 <button
+                   type="button"
+                   onClick={() => void handleDeviceAudioTest()}
+                   className="rounded-lg bg-violet-600 px-3 py-2 font-bold text-white shadow-sm active:scale-[0.98]"
+                 >
+                   AudioContext解除＋開始音テスト
+                 </button>
+               </div>
+             </div>
            )}
            
            {isSampleMode && (
