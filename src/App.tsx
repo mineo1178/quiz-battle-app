@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { cancelSounds, ensureAudioReady, getAudioState, playBeep, playFinishSound, playStartSound, setAudioEnabled } from './sound';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth';
@@ -76,8 +76,10 @@ interface BattleState {
 }
 
 // --- View Props Interfaces ---
+type View = 'home' | 'setup' | 'battle' | 'result' | 'history' | 'history_detail' | 'stats' | 'settings';
+
 interface BaseProps {
-  setCurrentView: (view: any) => void;
+  setCurrentView: (view: View) => void;
   setErrorMsg: (msg: string) => void;
 }
 
@@ -86,7 +88,44 @@ interface HomeProps extends BaseProps {
   setBattleState: (state: BattleState | null) => void;
   isSampleMode: boolean;
   setIsSampleMode: (val: boolean) => void;
-  setMatches: (matches: Match[]) => void;
+}
+
+type LoginProps = Pick<HomeProps, 'setIsSampleMode' | 'setErrorMsg'>;
+
+interface SetupProps extends BaseProps {
+  players: Player[];
+  setBattleState: HomeProps['setBattleState'];
+}
+
+interface BattleProps extends SetupProps {
+  battleState: BattleState | null;
+  soundEnabled: boolean;
+  saveMatch: (match: Match) => Promise<boolean>;
+  setFinishedMatch: (match: Match) => void;
+}
+
+interface StatsProps extends Pick<BaseProps, 'setCurrentView'> {
+  matches: Match[];
+  players: Player[];
+}
+
+interface ResultProps extends StatsProps {
+  finishedMatch: Match | null;
+}
+
+interface HistoryProps extends StatsProps {
+  fetchData: () => Promise<void>;
+  setSelectedMatch: (match: Match) => void;
+  deleteMatch: (matchId: string) => Promise<boolean>;
+}
+
+interface SettingsProps extends BaseProps {
+  players: Player[];
+  savePlayers: (players: Player[]) => Promise<void>;
+  isSampleMode: boolean;
+  setIsSampleMode: HomeProps['setIsSampleMode'];
+  soundEnabled: boolean;
+  setSoundEnabled: (enabled: boolean) => void;
 }
 
 // --- Firebase Initialization ---
@@ -190,7 +229,7 @@ const ErrorToast = ({ msg, onClose }: { msg: string, onClose: () => void }) => {
 };
 
 // --- View Components ---
-const LoginView = ({ setIsSampleMode, setErrorMsg }: any) => {
+const LoginView = ({ setIsSampleMode, setErrorMsg }: LoginProps) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -343,7 +382,7 @@ const HomeView = ({ battleState, setBattleState, setCurrentView, isSampleMode, s
   );
 };
 
-const SetupView = ({ players, setBattleState, setCurrentView, setErrorMsg }: any) => {
+const SetupView = ({ players, setBattleState, setCurrentView, setErrorMsg }: SetupProps) => {
   const [date, setDate] = useState(getLocalDateString);
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [title, setTitle] = useState('');
@@ -468,9 +507,9 @@ const SetupView = ({ players, setBattleState, setCurrentView, setErrorMsg }: any
   );
 };
 
-const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCurrentView, saveMatch, setFinishedMatch, setErrorMsg }: any) => {
-  const [timeLeft, setTimeLeft] = useState(battleState?.timeLimitSec || 30);
+const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCurrentView, saveMatch, setFinishedMatch, setErrorMsg }: BattleProps) => {
   const [isTimerRunning, setIsTimerRunning] = useState(false);
+  const timerPhase = useRef<'idle' | 'running' | 'confirming'>('idle');
   const [confirmDialog, setConfirmDialog] = useState<{show: boolean, result: 'correct'|'incorrect'|'timeout'|null}>({show: false, result: null});
   const [showFinishConfirm, setShowFinishConfirm] = useState(false);
   const [memoInput, setMemoInput] = useState('');
@@ -490,25 +529,36 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
     return limit;
   }, [battleState?.timeLimitSec, aPlayer]);
 
-  useEffect(() => {
+  const [timeLeft, setTimeLeft] = useState(effectiveTimeLimit);
+  const round = battleState?.currentRound;
+  const [timerResetInputs, setTimerResetInputs] = useState({ effectiveTimeLimit, round, showFinishConfirm });
+
+  // Reset only when the round, limit or finish dialog changes.
+  if (timerResetInputs.effectiveTimeLimit !== effectiveTimeLimit ||
+      timerResetInputs.round !== round ||
+      timerResetInputs.showFinishConfirm !== showFinishConfirm) {
+    setTimerResetInputs({ effectiveTimeLimit, round, showFinishConfirm });
     if (!isTimerRunning && !confirmDialog.show && !showFinishConfirm) {
-       setTimeLeft(effectiveTimeLimit);
+      setTimeLeft(effectiveTimeLimit);
     }
-  }, [effectiveTimeLimit, battleState?.currentRound, showFinishConfirm]);
+  }
 
   useEffect(() => {
     if (!isTimerRunning || confirmDialog.show || showFinishConfirm) return;
 
-    if (timeLeft <= 0) {
-      if (soundEnabled) {
-        void playBeep(220, 0.8, 'sawtooth', 0.8);
+    const timerId = setTimeout(() => {
+      if (timerPhase.current !== 'running') return;
+      if (timeLeft <= 1) {
+        timerPhase.current = 'confirming';
+        setTimeLeft(timeLeft - 1);
+        if (soundEnabled) {
+          void playBeep(220, 0.8, 'sawtooth', 0.8);
+        }
+        setIsTimerRunning(false);
+        setConfirmDialog({show: true, result: 'timeout'});
+        return;
       }
-      setIsTimerRunning(false);
-      setConfirmDialog({show: true, result: 'timeout'});
-      return;
-    }
 
-    const timerId = setInterval(() => {
       setTimeLeft((prev: number) => {
         const next = prev - 1;
         if (soundEnabled && next > 0) {
@@ -518,19 +568,22 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
       });
     }, 1000);
 
-    return () => clearInterval(timerId);
+    return () => clearTimeout(timerId);
   }, [isTimerRunning, timeLeft, confirmDialog.show, showFinishConfirm, soundEnabled]);
 
   if (!battleState) return null;
 
   const handleResultSelect = (result: 'correct' | 'incorrect') => {
+    if (timerPhase.current !== 'running') return;
+    timerPhase.current = 'confirming';
     setIsTimerRunning(false);
     setConfirmDialog({show: true, result});
   };
 
   const confirmResult = () => {
     const res = confirmDialog.result;
-    if (!res) return;
+    if (!res || timerPhase.current !== 'confirming') return;
+    timerPhase.current = 'idle';
 
     const newScores = { ...battleState.scores };
     let pointPlayerKey: 'playerA' | 'playerB';
@@ -552,7 +605,7 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
       elapsedSec: effectiveTimeLimit - timeLeft
     };
 
-    const newState = {
+    const newState: BattleState = {
       ...battleState,
       scores: newScores,
       rounds: [...battleState.rounds, newRound],
@@ -577,7 +630,7 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
 
     const newRounds = battleState.rounds.slice(0, -1);
     
-    const newState = {
+    const newState: BattleState = {
       ...battleState,
       scores: newScores,
       rounds: newRounds,
@@ -590,10 +643,12 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
   };
 
   const requestFinish = () => {
+    if (timerPhase.current === 'confirming') return;
     if (battleState.currentRound === 1) {
       setErrorMsg("まだ1問も完了していません。対戦を行ってから終了してください。");
       return;
     }
+    timerPhase.current = 'idle';
     setIsTimerRunning(false);
     setShowFinishConfirm(true);
   };
@@ -699,6 +754,8 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
         {!isTimerRunning && timeLeft === effectiveTimeLimit && !confirmDialog.show && (
           <button 
             onClick={event => {
+              if (timerPhase.current !== 'idle') return;
+              timerPhase.current = 'running';
               if (soundEnabled) {
                 void playStartSound(event.nativeEvent);
               }
@@ -808,8 +865,11 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
             </button>
             <button 
               onClick={() => {
+                if (timerPhase.current !== 'confirming') return;
+                const retry = confirmDialog.result !== 'timeout';
+                timerPhase.current = retry ? 'running' : 'idle';
                 setConfirmDialog({show: false, result: null});
-                if(confirmDialog.result !== 'timeout') setIsTimerRunning(true);
+                if (retry) setIsTimerRunning(true);
               }}
               className="w-full py-4 bg-transparent border-2 border-white/50 text-white font-bold rounded-2xl active:bg-white/10 transition-colors text-lg"
             >
@@ -822,7 +882,7 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
   );
 };
 
-const ResultView = ({ finishedMatch, matches, players, setCurrentView }: any) => {
+const ResultView = ({ finishedMatch, matches, players, setCurrentView }: ResultProps) => {
   const latestMatch = finishedMatch || matches[0];
   if (!latestMatch) return <div className="p-5">読込中...</div>;
 
@@ -900,7 +960,7 @@ const ResultView = ({ finishedMatch, matches, players, setCurrentView }: any) =>
   );
 };
 
-const HistoryView = ({ matches, players, setCurrentView, fetchData, setSelectedMatch, deleteMatch }: any) => {
+const HistoryView = ({ matches, players, setCurrentView, fetchData, setSelectedMatch, deleteMatch }: HistoryProps) => {
   const [filterCategory, setFilterCategory] = useState('すべて');
 
   const filteredMatches = useMemo(() => {
@@ -1000,7 +1060,7 @@ const HistoryDetailView = ({
 }: {
   match: Match | null;
   players: Player[];
-  setCurrentView: (view: any) => void;
+  setCurrentView: BaseProps['setCurrentView'];
   updateMatch: (match: Match) => Promise<boolean>;
   deleteMatch: (matchId: string) => Promise<boolean>;
 }) => {
@@ -1011,15 +1071,6 @@ const HistoryDetailView = ({
   const [editTitle, setEditTitle] = useState('');
   const [editCategory, setEditCategory] = useState('');
   const [editMemo, setEditMemo] = useState('');
-
-  useEffect(() => {
-    if (match && !isEditing) {
-      setEditDate(match.date);
-      setEditTitle(match.title);
-      setEditCategory(match.category);
-      setEditMemo(match.memo || '');
-    }
-  }, [match, isEditing]);
 
   if (!match) return <div className="p-5 flex flex-col h-full bg-slate-50">見つかりません</div>;
 
@@ -1041,15 +1092,19 @@ const HistoryDetailView = ({
     setCurrentView('history');
   };
 
+  const handleStartEdit = () => {
+    setEditDate(match.date);
+    setEditTitle(match.title);
+    setEditCategory(match.category);
+    setEditMemo(match.memo || '');
+    setIsEditing(true);
+  };
+
   const handleCancelEdit = () => {
     if (hasChanges) {
       if (!window.confirm('未保存の変更があります。\n破棄してもよろしいですか？')) return;
     }
     setIsEditing(false);
-    setEditDate(match.date);
-    setEditTitle(match.title);
-    setEditCategory(match.category);
-    setEditMemo(match.memo || '');
   };
 
   const handleSaveEdit = async () => {
@@ -1159,7 +1214,7 @@ const HistoryDetailView = ({
 
           {!isEditing && (
             <div className="flex gap-3 mt-6 pt-4 border-t border-slate-100">
-              <button onClick={() => setIsEditing(true)} disabled={isSaving} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors">
+              <button onClick={handleStartEdit} disabled={isSaving} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors">
                 <Edit2 className="w-4 h-4" /> 編集
               </button>
               <button onClick={handleDelete} disabled={isSaving} className="flex-1 bg-red-50 hover:bg-red-100 text-red-600 py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-colors">
@@ -1217,7 +1272,7 @@ const HistoryDetailView = ({
 };
 
 
-const StatsView = ({ matches, players, setCurrentView }: any) => {
+const StatsView = ({ matches, players, setCurrentView }: StatsProps) => {
   const statsData = players.map((p: Player) => {
     const pMatches = matches.filter((m: Match) => m.players.playerAId === p.id || m.players.playerBId === p.id);
     const totalGames = pMatches.length;
@@ -1236,10 +1291,10 @@ const StatsView = ({ matches, players, setCurrentView }: any) => {
       winRate: totalGames > 0 ? Math.round((wins / totalGames) * 100) : 0,
       totalPoints,
     };
-  }).filter((d: any) => d.totalGames > 0);
+  }).filter(d => d.totalGames > 0);
 
   // 勝利数ランキングでソート
-  statsData.sort((a: any, b: any) => b.wins - a.wins);
+  statsData.sort((a, b) => b.wins - a.wins);
 
   const categoryPlayerStats: Record<string, { games: number, players: Record<string, { wins: number, games: number, score: number }> }> = {};
   
@@ -1361,7 +1416,7 @@ const StatsView = ({ matches, players, setCurrentView }: any) => {
   );
 };
 
-const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setIsSampleMode, soundEnabled, setSoundEnabled, setErrorMsg }: any) => {
+const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setIsSampleMode, soundEnabled, setSoundEnabled, setErrorMsg }: SettingsProps) => {
   const [editingPlayers, setEditingPlayers] = useState<Player[]>(JSON.parse(JSON.stringify(players)));
   const [isSaving, setIsSaving] = useState(false);
   const [deviceDiagnostics, setDeviceDiagnostics] = useState<DeviceDiagnostics>(() => getDeviceDiagnostics('未実行'));
@@ -1704,12 +1759,23 @@ export default function App() {
   const [isSampleMode, setIsSampleMode] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(() => readSoundPreference() !== 'false');
   
-  const [currentView, setCurrentView] = useState<'home' | 'setup' | 'battle' | 'result' | 'history' | 'history_detail' | 'stats' | 'settings'>('home');
+  const [currentView, setCurrentView] = useState<View>('home');
   
   const [players, setPlayers] = useState<Player[]>(DEFAULT_PLAYERS);
   const [matches, setMatches] = useState<Match[]>([]);
+  const cloudRequestId = useRef(0);
   
-  const [battleState, setBattleState] = useState<BattleState | null>(null);
+  const [savedBattleState, setBattleState] = useState<BattleState | null | undefined>(() => {
+    const savedState = localStorage.getItem(STORAGE_KEY_STATE);
+    if (!savedState) return null;
+    try {
+      return JSON.parse(savedState);
+    } catch {
+      return undefined;
+    }
+  });
+  const battleState = savedBattleState ?? null;
+  const hasInvalidBattleState = savedBattleState === undefined;
   const [finishedMatch, setFinishedMatch] = useState<Match | null>(null);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [appError, setAppError] = useState('');
@@ -1768,56 +1834,68 @@ export default function App() {
     return { mockPlayers, mockMatches };
   };
 
-  const fetchData = useCallback(async () => {
-    if (isSampleMode) {
-      const localPlayers = localStorage.getItem('quiz_players_sample');
-      const localMatches = localStorage.getItem('quiz_matches_sample');
-      
-      if (localPlayers && localMatches) {
-        setPlayers(JSON.parse(localPlayers));
-        setMatches(JSON.parse(localMatches));
-      } else {
-        const { mockPlayers, mockMatches } = generateMockData();
-        setPlayers(mockPlayers);
-        setMatches(mockMatches);
-        localStorage.setItem('quiz_players_sample', JSON.stringify(mockPlayers));
-        localStorage.setItem('quiz_matches_sample', JSON.stringify(mockMatches));
-      }
-      return;
+  const loadSampleData = () => {
+    const localPlayers = localStorage.getItem('quiz_players_sample');
+    const localMatches = localStorage.getItem('quiz_matches_sample');
+
+    if (localPlayers && localMatches) {
+      setPlayers(JSON.parse(localPlayers));
+      setMatches(JSON.parse(localMatches));
+    } else {
+      const { mockPlayers, mockMatches } = generateMockData();
+      setPlayers(mockPlayers);
+      setMatches(mockMatches);
+      localStorage.setItem('quiz_players_sample', JSON.stringify(mockPlayers));
+      localStorage.setItem('quiz_matches_sample', JSON.stringify(mockMatches));
     }
+  };
 
-    if (!user) return;
+  const handleSampleModeChange = (enabled: boolean) => {
+    if (enabled === isSampleMode) return;
+    cloudRequestId.current++;
+    if (enabled) {
+      loadSampleData();
+    } else {
+      setPlayers(DEFAULT_PLAYERS);
+      setMatches([]);
+    }
+    setIsSampleMode(enabled);
+  };
 
-    try {
-      const playerSnap = await getDocs(getPlayersRef());
+  const fetchCloudData = useCallback(() => {
+    const requestId = cloudRequestId.current + 1;
+    cloudRequestId.current = requestId;
+    return getDocs(getPlayersRef()).then(playerSnap => {
+      if (requestId !== cloudRequestId.current) return;
       const fetchedPlayers: Player[] = [];
       playerSnap.forEach(doc => fetchedPlayers.push(doc.data() as Player));
       if (fetchedPlayers.length > 0) setPlayers(fetchedPlayers);
-
-      const matchSnap = await getDocs(getMatchesRef());
+      return getDocs(getMatchesRef());
+    }).then(matchSnap => {
+      if (!matchSnap || requestId !== cloudRequestId.current) return;
       const fetchedMatches: Match[] = [];
       matchSnap.forEach(doc => fetchedMatches.push(doc.data() as Match));
       fetchedMatches.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setMatches(fetchedMatches);
-    } catch (error) {
+    }).catch(error => {
       console.error("Fetch Data Error:", error);
-    }
-  }, [user, isSampleMode]);
-
-  useEffect(() => {
-    fetchData();
-  }, [fetchData]);
-
-  useEffect(() => {
-    const savedState = localStorage.getItem(STORAGE_KEY_STATE);
-    if (savedState) {
-      try {
-        setBattleState(JSON.parse(savedState));
-      } catch (e) {
-        localStorage.removeItem(STORAGE_KEY_STATE);
-      }
-    }
+    });
   }, []);
+
+  const fetchData = async () => {
+    if (isSampleMode) loadSampleData();
+    else if (user) await fetchCloudData();
+  };
+
+  useEffect(() => {
+    if (!user || isSampleMode) return;
+    void fetchCloudData();
+    return () => { cloudRequestId.current++; };
+  }, [fetchCloudData, isSampleMode, user]);
+
+  useEffect(() => {
+    if (hasInvalidBattleState) localStorage.removeItem(STORAGE_KEY_STATE);
+  }, [hasInvalidBattleState]);
 
   useEffect(() => {
     try {
@@ -1948,7 +2026,7 @@ export default function App() {
     return (
       <div className="w-full max-w-md mx-auto h-screen bg-slate-100 overflow-hidden shadow-2xl relative select-none font-sans text-slate-800">
         <ErrorToast msg={appError} onClose={() => setAppError('')} />
-        <LoginView setIsSampleMode={setIsSampleMode} setErrorMsg={setAppError} />
+        <LoginView setIsSampleMode={handleSampleModeChange} setErrorMsg={setAppError} />
       </div>
     );
   }
@@ -1970,8 +2048,7 @@ export default function App() {
             setBattleState={setBattleState}
             setCurrentView={setCurrentView} 
             isSampleMode={isSampleMode} 
-            setIsSampleMode={setIsSampleMode} 
-            setMatches={setMatches} 
+            setIsSampleMode={handleSampleModeChange}
             setErrorMsg={setAppError}
           />
         )}
@@ -2015,7 +2092,7 @@ export default function App() {
         )}
         {currentView === 'history_detail' && (
           <HistoryDetailView 
-            match={selectedMatch}
+            match={matches.find(match => match.id === selectedMatch?.id) ?? null}
             players={players} 
             setCurrentView={setCurrentView} 
             updateMatch={updateMatch}
@@ -2035,7 +2112,7 @@ export default function App() {
             savePlayers={savePlayers} 
             setCurrentView={setCurrentView} 
             isSampleMode={isSampleMode} 
-            setIsSampleMode={setIsSampleMode}
+            setIsSampleMode={handleSampleModeChange}
             soundEnabled={soundEnabled} 
             setSoundEnabled={setSoundEnabled}
             setErrorMsg={setAppError} 
