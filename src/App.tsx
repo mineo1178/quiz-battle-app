@@ -178,8 +178,8 @@ const LoginView = ({ setIsSampleMode, setErrorMsg }: LoginProps) => {
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-50 items-center justify-center p-6 relative">
-      <div className="bg-white p-8 rounded-3xl shadow-xl w-full max-w-sm">
+    <div className="flex h-full flex-col items-center overflow-y-auto bg-slate-50 p-4 sm:p-6">
+      <div className="my-auto w-full max-w-sm shrink-0 rounded-3xl bg-white p-6 shadow-xl sm:max-w-[480px] sm:p-8">
         <h1 className="text-3xl font-black text-blue-600 mb-2 text-center">クイズ対戦</h1>
         <p className="text-slate-500 text-sm font-bold text-center mb-8">ログインして学習を記録しよう</p>
         
@@ -239,41 +239,43 @@ const HomeView = ({ battleState, setBattleState, setCurrentView, isSampleMode, s
 
   return (
     <div className="flex flex-col h-full overflow-y-auto bg-slate-50">
-      <div className="bg-blue-600 text-white p-6 rounded-b-3xl shadow-md">
+      <div className="shrink-0 bg-blue-600 text-white p-6 sm:px-10 lg:py-10 rounded-b-3xl shadow-md">
         <h1 className="text-3xl font-bold mb-2">クイズ対戦</h1>
         <p className="text-blue-100 opacity-90">親子や兄弟で楽しく学ぼう！</p>
       </div>
 
-      <div className="flex-1 p-6 flex flex-col gap-4">
-        {battleState && (
-          <button 
-            onClick={() => setCurrentView('battle')}
-            className="w-full bg-orange-500 hover:bg-orange-600 active:scale-95 transition-transform text-white p-5 rounded-2xl shadow flex items-center justify-between"
-          >
-            <div className="flex items-center gap-3">
-              <Zap className="w-8 h-8" />
-              <div className="text-left">
-                <div className="font-bold text-lg">対戦を再開する</div>
-                <div className="text-sm opacity-90">中断された対戦があります</div>
+      <div className="flex-1 p-4 sm:p-8 flex flex-col gap-4">
+        <div className={`grid gap-4 ${battleState ? 'sm:grid-cols-2' : 'sm:max-w-xl'}`}>
+          {battleState && (
+            <button
+              onClick={() => setCurrentView('battle')}
+              className="w-full bg-orange-500 hover:bg-orange-600 active:scale-95 transition-transform text-white p-5 rounded-2xl shadow flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3">
+                <Zap className="w-8 h-8" />
+                <div className="text-left">
+                  <div className="font-bold text-lg">対戦を再開する</div>
+                  <div className="text-sm opacity-90">中断された対戦があります</div>
+                </div>
               </div>
-            </div>
-            <ArrowRight className="w-6 h-6" />
+              <ArrowRight className="w-6 h-6" />
+            </button>
+          )}
+
+          <button
+            onClick={handleNewGame}
+            className="w-full bg-blue-500 hover:bg-blue-600 active:scale-95 transition-transform text-white px-3 py-6 rounded-2xl shadow-lg flex items-center justify-center gap-2 text-lg sm:text-xl font-bold"
+          >
+            <Play className="w-8 h-8 shrink-0" /> 新しい対戦を始める
           </button>
-        )}
-
-        <button 
-          onClick={handleNewGame}
-          className="w-full bg-blue-500 hover:bg-blue-600 active:scale-95 transition-transform text-white p-6 rounded-2xl shadow flex items-center justify-center gap-3 text-xl font-bold"
-        >
-          <Play className="w-8 h-8" /> 新しい対戦を始める
-        </button>
-
-        <button onClick={() => setCurrentView('debt')}
-          className="w-full flex items-center justify-center gap-3 rounded-2xl bg-indigo-100 p-4 text-lg font-bold text-indigo-800">
-          <Award className="w-6 h-6" /> 賞金・借金台帳
-        </button>
+        </div>
 
         <div className="grid grid-cols-2 gap-4">
+          <button onClick={() => setCurrentView('debt')}
+            className="col-span-2 lg:col-span-1 w-full flex items-center justify-center gap-3 rounded-2xl bg-indigo-100 p-4 text-lg font-bold text-indigo-800">
+            <Award className="w-6 h-6" /> 賞金・借金台帳
+          </button>
+
           <button 
             onClick={() => setCurrentView('history')}
             className="bg-white p-5 rounded-2xl shadow text-slate-700 hover:bg-slate-50 active:scale-95 transition-transform flex flex-col items-center gap-2"
@@ -289,17 +291,17 @@ const HomeView = ({ battleState, setBattleState, setCurrentView, isSampleMode, s
             <BarChart2 className="w-8 h-8 text-emerald-500" />
             <span className="font-bold">成績分析</span>
           </button>
+
+          <button
+            onClick={() => setCurrentView('settings')}
+            className="col-span-2 lg:col-span-1 bg-white p-5 rounded-2xl shadow text-slate-700 hover:bg-slate-50 active:scale-95 transition-transform flex items-center justify-center gap-3"
+          >
+            <Settings className="w-6 h-6 text-slate-500" />
+            <span className="font-bold">設定・プレイヤー</span>
+          </button>
         </div>
 
-        <button 
-          onClick={() => setCurrentView('settings')}
-          className="bg-white p-5 rounded-2xl shadow text-slate-700 hover:bg-slate-50 active:scale-95 transition-transform flex items-center justify-center gap-3"
-        >
-          <Settings className="w-6 h-6 text-slate-500" />
-          <span className="font-bold">設定・プレイヤー</span>
-        </button>
-
-        <div className="mt-auto bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex items-center justify-between">
+        <div className="mt-auto bg-white p-4 rounded-xl sm:mt-2 sm:self-start sm:w-full sm:max-w-sm shadow-sm border border-slate-100 flex items-center justify-between">
           <div className="flex flex-col">
             <span className="text-sm font-bold text-slate-700">サンプルモード切替</span>
             <span className="text-xs text-slate-500">クラウド保存なしで試す</span>
@@ -366,37 +368,37 @@ const SetupView = ({ players, setBattleState, setCurrentView, setErrorMsg }: Set
         <h2 className="text-xl font-bold mx-auto pr-8">対戦設定</h2>
       </div>
 
-      <div className="p-5 flex flex-col gap-5">
+      <div className="mx-auto grid w-full max-w-4xl gap-4 p-4 sm:grid-cols-2 sm:p-6">
         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-          <label className="block text-sm font-bold text-slate-700 mb-1">対戦日</label>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border border-slate-200 rounded-lg p-3 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <label className="block text-sm font-bold text-slate-700 mb-1" htmlFor="setup-date">対戦日</label>
+          <input id="setup-date" type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full min-w-0 border border-slate-200 rounded-lg p-3 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
 
         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-          <label className="block text-sm font-bold text-slate-700 mb-1">カテゴリ</label>
-          <select value={category} onChange={e => setCategory(e.target.value)} className="w-full border border-slate-200 rounded-lg p-3 bg-white appearance-none font-bold text-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <label className="block text-sm font-bold text-slate-700 mb-1" htmlFor="setup-category">カテゴリ</label>
+          <select id="setup-category" value={category} onChange={e => setCategory(e.target.value)} className="w-full min-w-0 border border-slate-200 rounded-lg p-3 bg-white appearance-none font-bold text-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
             {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
           </select>
         </div>
 
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-          <label className="block text-sm font-bold text-slate-700 mb-1">タイトル (任意)</label>
-          <input type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder={`${category}クイズ ${date.replace(/-/g, '/')}`} className="w-full border border-slate-200 rounded-lg p-3 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 sm:col-span-2">
+          <label className="block text-sm font-bold text-slate-700 mb-1" htmlFor="setup-title">タイトル (任意)</label>
+          <input id="setup-title" type="text" value={title} onChange={e => setTitle(e.target.value)} placeholder={`${category}クイズ ${date.replace(/-/g, '/')}`} className="w-full min-w-0 border border-slate-200 rounded-lg p-3 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500" />
         </div>
 
         <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
           <label className="block text-sm font-bold text-slate-700 mb-3">プレイヤー設定</label>
-          <div className="flex items-center gap-2 mb-4">
-            <div className="flex-1 w-full min-w-[120px]">
-              <span className="text-xs font-bold text-blue-500 mb-1 block">プレイヤーA (赤)</span>
-              <select value={playerAId} onChange={e => setPlayerAId(e.target.value)} className="w-full border-2 border-red-200 rounded-lg p-3 font-bold bg-red-50 text-red-900 focus:outline-none focus:ring-2 focus:ring-red-500">
+          <div className="flex flex-col items-stretch gap-2 mb-4 sm:flex-row sm:items-center">
+            <div className="min-w-0 flex-1">
+              <label htmlFor="setup-player-A" className="text-xs font-bold text-blue-500 mb-1 block">プレイヤーA (赤)</label>
+              <select id="setup-player-A" value={playerAId} onChange={e => setPlayerAId(e.target.value)} className="w-full min-w-0 border-2 border-red-200 rounded-lg p-3 font-bold bg-red-50 text-red-900 focus:outline-none focus:ring-2 focus:ring-red-500">
                 {activePlayers.map((p: Player) => <option key={p.id} value={p.id}>{p.name} {p.handicap === 'primary'?'(小)':p.handicap === 'junior'?'(中)':p.handicap === 'custom'?'(カ)':' '}</option>)}
               </select>
             </div>
-            <span className="font-bold text-slate-400 mt-5">VS</span>
-            <div className="flex-1 w-full min-w-[120px]">
-              <span className="text-xs font-bold text-blue-500 mb-1 block">プレイヤーB (青)</span>
-              <select value={playerBId} onChange={e => setPlayerBId(e.target.value)} className="w-full border-2 border-blue-200 rounded-lg p-3 font-bold bg-blue-50 text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <span className="hidden font-bold text-slate-400 sm:mt-5 sm:inline">VS</span>
+            <div className="min-w-0 flex-1">
+              <label htmlFor="setup-player-B" className="text-xs font-bold text-blue-500 mb-1 block">プレイヤーB (青)</label>
+              <select id="setup-player-B" value={playerBId} onChange={e => setPlayerBId(e.target.value)} className="w-full min-w-0 border-2 border-blue-200 rounded-lg p-3 font-bold bg-blue-50 text-blue-900 focus:outline-none focus:ring-2 focus:ring-blue-500">
                 {activePlayers.map((p: Player) => <option key={p.id} value={p.id}>{p.name} {p.handicap === 'primary'?'(小)':p.handicap === 'junior'?'(中)':p.handicap === 'custom'?'(カ)':' '}</option>)}
               </select>
             </div>
@@ -421,15 +423,15 @@ const SetupView = ({ players, setBattleState, setCurrentView, setErrorMsg }: Set
           </div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 mb-6">
-          <label className="block text-sm font-bold text-slate-700 mb-1">制限時間</label>
+        <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+          <label className="block text-sm font-bold text-slate-700 mb-1" htmlFor="setup-time">制限時間</label>
           <div className="flex items-center gap-4">
-            <input type="range" min="10" max="60" step="5" value={timeLimit} onChange={e => setTimeLimit(Number(e.target.value))} className="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer" />
+            <input id="setup-time" type="range" min="10" max="60" step="5" value={timeLimit} onChange={e => setTimeLimit(Number(e.target.value))} className="min-w-0 flex-1 h-11 cursor-pointer accent-blue-600" />
             <span className="font-bold text-xl w-16 text-right">{timeLimit}秒</span>
           </div>
         </div>
 
-        <button onClick={handleStart} className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xl p-5 rounded-2xl shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2">
+        <button onClick={handleStart} className="sm:col-span-2 sm:mx-auto sm:max-w-sm w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-xl p-5 rounded-2xl shadow-lg active:scale-95 transition-transform flex items-center justify-center gap-2">
           <Play fill="currentColor" className="w-6 h-6" /> 対戦スタート！
         </button>
       </div>
@@ -452,31 +454,31 @@ const ResultView = ({ finishedMatch, matches, players, setCurrentView, recordAwa
          ) : (
            <Award className="w-24 h-24 mx-auto mb-4 text-slate-200 opacity-90 drop-shadow-md" />
          )}
-         <h2 className="text-4xl font-black mb-2">
+         <h2 className="text-4xl font-black mb-2 [overflow-wrap:anywhere]">
            {latestMatch.result === 'draw' ? '引き分け！' : `${latestMatch.result === 'playerA_win' ? pA?.name : pB?.name} の勝ち！`}
          </h2>
-         <p className="opacity-90">{latestMatch.title}</p>
+         <p className="opacity-90 [overflow-wrap:anywhere]">{latestMatch.title}</p>
       </div>
 
-      <div className="px-6 -mt-8 relative z-10 pb-10">
+      <div className="mx-auto w-full max-w-3xl px-4 -mt-8 relative z-10 pb-10 sm:px-6">
          <div className="bg-white rounded-3xl shadow-xl p-6 border border-slate-100">
             <div className="flex justify-between items-center mb-6">
-               <div className="text-center flex-1">
+               <div className="text-center min-w-0 flex-1 [overflow-wrap:anywhere]">
                   <span className="block text-sm font-bold text-red-500 mb-1">{pA?.name}</span>
                   <span className="text-xs text-slate-400 block -mt-1 mb-1 truncate">{latestMatch.handicapSnapshot?.playerA || getHandicapDisplay(pA)}</span>
-                  <span className="text-5xl font-black text-slate-800">{latestMatch.finalScore.playerA}</span>
+                  <span className="text-5xl font-black sm:text-6xl text-slate-800">{latestMatch.finalScore.playerA}</span>
                </div>
                <div className="px-4 text-slate-300 font-black text-3xl mb-4">-</div>
-               <div className="text-center flex-1">
+               <div className="text-center min-w-0 flex-1 [overflow-wrap:anywhere]">
                   <span className="block text-sm font-bold text-blue-500 mb-1">{pB?.name}</span>
                   <span className="text-xs text-slate-400 block -mt-1 mb-1 truncate">{latestMatch.handicapSnapshot?.playerB || getHandicapDisplay(pB)}</span>
-                  <span className="text-5xl font-black text-slate-800">{latestMatch.finalScore.playerB}</span>
+                  <span className="text-5xl font-black sm:text-6xl text-slate-800">{latestMatch.finalScore.playerB}</span>
                </div>
             </div>
 
             <div className="text-center py-4 border-t border-slate-100 bg-slate-50 rounded-xl mb-6">
                <span className="text-sm font-bold text-slate-500 block mb-1">勝者</span>
-               <span className="text-2xl font-black text-indigo-600">
+               <span className="text-2xl font-black text-indigo-600 [overflow-wrap:anywhere]">
                  {latestMatch.result === 'draw' ? '引き分け' : 
                   latestMatch.result === 'playerA_win' ? pA?.name : pB?.name}
                </span>
@@ -485,11 +487,11 @@ const ResultView = ({ finishedMatch, matches, players, setCurrentView, recordAwa
             {latestMatch.memo && (
               <div className="mb-2 p-4 bg-yellow-50 rounded-xl border border-yellow-100">
                 <span className="text-xs font-bold text-yellow-600 block mb-1">📝 メモ</span>
-                <p className="text-sm text-slate-700 whitespace-pre-wrap">{latestMatch.memo}</p>
+                <p className="text-sm text-slate-700 whitespace-pre-wrap [overflow-wrap:anywhere]">{latestMatch.memo}</p>
               </div>
             )}
 
-            <div className="flex flex-col gap-3 mt-6">
+            <div className="grid gap-3 mt-6 sm:grid-cols-2">
                <button onClick={() => recordAward(latestMatch)}
                  className="w-full rounded-xl bg-indigo-100 p-4 font-bold text-indigo-800">
                  賞金を記録する
@@ -534,6 +536,11 @@ const HistoryView = ({ matches, players, setCurrentView, fetchData, setSelectedM
     }
   };
 
+  const openMatch = (match: Match) => {
+    setSelectedMatch(match);
+    setCurrentView('history_detail');
+  };
+
   return (
     <div className="flex flex-col h-full bg-slate-50">
       <div className="bg-white p-4 border-b flex items-center sticky top-0 z-10 shadow-sm gap-2">
@@ -550,60 +557,103 @@ const HistoryView = ({ matches, players, setCurrentView, fetchData, setSelectedM
         <select 
           value={filterCategory} 
           onChange={(e) => setFilterCategory(e.target.value)}
-          className="w-full bg-white border border-slate-200 rounded-lg p-3 font-bold text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full sm:max-w-xs bg-white border border-slate-200 rounded-lg p-3 font-bold text-slate-700 shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
           <option value="すべて">すべてのカテゴリ</option>
           {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
 
-      <div className="p-4 flex flex-col gap-4 overflow-y-auto pb-10 flex-1">
+      <div className="min-h-0 flex-1 overflow-y-auto p-4 pb-10">
         {filteredMatches.length === 0 ? (
           <div className="text-center text-slate-400 mt-10 font-bold">履歴がありません</div>
         ) : (
-          filteredMatches.map((m: Match) => {
-            const pA = players.find((p: Player) => p.id === m.players.playerAId);
-            const pB = players.find((p: Player) => p.id === m.players.playerBId);
-            
-            return (
-              <button 
-                key={m.id} 
-                onClick={() => { setSelectedMatch(m); setCurrentView('history_detail'); }}
-                className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col text-left active:scale-95 transition-transform relative group"
-              >
-                <div className="flex justify-between items-start mb-3 border-b border-slate-50 pb-3">
-                  <div className="pr-10">
-                    <span className="text-xs font-bold text-indigo-500 bg-indigo-50 px-2 py-1 rounded-md">{m.category}</span>
-                    <span className="text-xs text-slate-400 ml-2">{m.date.replace(/-/g, '/')}</span>
-                    <h3 className="font-bold text-slate-800 mt-2 text-lg">{m.title}</h3>
-                  </div>
-                  <div className="absolute top-4 right-4 flex items-center gap-2">
-                    {m.result !== 'draw' && <Award className="w-7 h-7 text-yellow-400 drop-shadow-sm shrink-0" />}
-                    <div 
-                      onClick={(e) => handleDelete(e, m.id)} 
-                      className="p-2 hover:bg-red-50 rounded-full transition-colors z-10"
+          <>
+            <div className="hidden overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-sm lg:block">
+              <table className="w-full table-fixed text-left text-sm">
+                <thead className="border-b bg-slate-100 text-slate-600">
+                  <tr>
+                    <th scope="col" className="w-28 p-3">日付</th>
+                    <th scope="col" className="w-24 p-3">カテゴリ</th>
+                    <th scope="col" className="p-3">対戦名</th>
+                    <th scope="col" className="w-1/5 p-3">プレイヤー</th>
+                    <th scope="col" className="w-24 p-3">スコア</th>
+                    <th scope="col" className="w-[13%] p-3">勝者</th>
+                    <th scope="col" className="w-28 p-3">操作</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 [overflow-wrap:anywhere]">
+                  {filteredMatches.map(m => {
+                    const nameA = players.find(p => p.id === m.players.playerAId)?.name || '不明';
+                    const nameB = players.find(p => p.id === m.players.playerBId)?.name || '不明';
+
+                    return (
+                      <tr key={m.id} onClick={() => openMatch(m)} className="cursor-pointer hover:bg-slate-50">
+                        <td className="p-3">{m.date.replace(/-/g, '/')}</td>
+                        <td className="p-3 font-bold text-indigo-500">{m.category}</td>
+                        <td className="p-3 font-bold">{m.title}</td>
+                        <td className="p-3">{nameA} / {nameB}</td>
+                        <td className="p-3 font-black tabular-nums">{m.finalScore.playerA} - {m.finalScore.playerB}</td>
+                        <td className="p-3">{m.result === 'draw' ? '引き分け' : m.result === 'playerA_win' ? nameA : nameB}</td>
+                        <td className="p-2">
+                          <div className="flex items-center gap-1">
+                            <button type="button" onClick={e => { e.stopPropagation(); openMatch(m); }} aria-label={m.title + ' の詳細'} className="min-h-11 rounded-lg px-2 font-bold text-blue-700 hover:bg-blue-50">詳細</button>
+                            <button type="button" onClick={e => handleDelete(e, m.id)} aria-label={m.title + ' を削除'} className="rounded-lg p-3 text-slate-500 hover:bg-red-50 hover:text-red-600">
+                              <Trash2 className="h-5 w-5" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2 lg:hidden">
+              {filteredMatches.map((m: Match) => {
+                const pA = players.find((p: Player) => p.id === m.players.playerAId);
+                const pB = players.find((p: Player) => p.id === m.players.playerBId);
+
+                return (
+                  <article key={m.id} className="relative min-w-0">
+                    <button
+                      onClick={() => openMatch(m)}
+                      className="h-full w-full bg-white p-5 rounded-2xl shadow-sm border border-slate-100 flex flex-col min-w-0 text-left active:scale-95 transition-transform"
                     >
-                      <Trash2 className="w-5 h-5 text-slate-300 hover:text-red-500" />
-                    </div>
-                  </div>
-                </div>
-                
-                <div className="flex items-center justify-between gap-3 mt-1 mt-4">
-                   <div className={`relative flex-1 flex flex-col items-center py-2 rounded-xl border-2 transition-colors ${m.result === 'playerA_win' ? 'bg-red-50 border-red-400 shadow-sm' : 'border-transparent'}`}>
-                      {m.result === 'playerA_win' && <span className="text-base absolute -top-4">👑</span>}
-                      <span className="text-xs font-bold text-slate-500 truncate w-full text-center px-1">{pA?.name || '不明'}</span>
-                      <span className={`text-2xl font-black ${m.result === 'playerA_win' ? 'text-red-600' : 'text-slate-700'}`}>{m.finalScore.playerA}</span>
-                   </div>
-                   <span className="text-slate-300 font-black text-xl">-</span>
-                   <div className={`relative flex-1 flex flex-col items-center py-2 rounded-xl border-2 transition-colors ${m.result === 'playerB_win' ? 'bg-blue-50 border-blue-400 shadow-sm' : 'border-transparent'}`}>
-                      {m.result === 'playerB_win' && <span className="text-base absolute -top-4">👑</span>}
-                      <span className="text-xs font-bold text-slate-500 truncate w-full text-center px-1">{pB?.name || '不明'}</span>
-                      <span className={`text-2xl font-black ${m.result === 'playerB_win' ? 'text-blue-600' : 'text-slate-700'}`}>{m.finalScore.playerB}</span>
-                   </div>
-                </div>
-              </button>
-            );
-          })
+                      <div className="flex justify-between items-start mb-3 border-b border-slate-50 pb-3">
+                        <div className="min-w-0 pr-16 [overflow-wrap:anywhere]">
+                          <span className="text-xs font-bold text-indigo-500 bg-indigo-50 px-2 py-1 rounded-md">{m.category}</span>
+                          <span className="text-xs text-slate-400 ml-2">{m.date.replace(/-/g, '/')}</span>
+                          <h3 className="font-bold text-slate-800 mt-2 text-lg">{m.title}</h3>
+                        </div>
+                        <div className="absolute top-6 right-14 flex items-center">
+                          {m.result !== 'draw' && <Award className="w-7 h-7 text-yellow-400 drop-shadow-sm shrink-0" />}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3 mt-4 w-full">
+                         <div className={`relative min-w-0 flex-1 flex flex-col items-center py-2 rounded-xl border-2 transition-colors ${m.result === 'playerA_win' ? 'bg-red-50 border-red-400 shadow-sm' : 'border-transparent'}`}>
+                            {m.result === 'playerA_win' && <span className="text-base absolute -top-4">👑</span>}
+                            <span className="text-xs font-bold text-slate-500 truncate w-full text-center px-1">{pA?.name || '不明'}</span>
+                            <span className={`text-2xl font-black ${m.result === 'playerA_win' ? 'text-red-600' : 'text-slate-700'}`}>{m.finalScore.playerA}</span>
+                         </div>
+                         <span className="text-slate-300 font-black text-xl">-</span>
+                         <div className={`relative min-w-0 flex-1 flex flex-col items-center py-2 rounded-xl border-2 transition-colors ${m.result === 'playerB_win' ? 'bg-blue-50 border-blue-400 shadow-sm' : 'border-transparent'}`}>
+                            {m.result === 'playerB_win' && <span className="text-base absolute -top-4">👑</span>}
+                            <span className="text-xs font-bold text-slate-500 truncate w-full text-center px-1">{pB?.name || '不明'}</span>
+                            <span className={`text-2xl font-black ${m.result === 'playerB_win' ? 'text-blue-600' : 'text-slate-700'}`}>{m.finalScore.playerB}</span>
+                         </div>
+                      </div>
+                    </button>
+                    <button type="button" onClick={e => handleDelete(e, m.id)} aria-label={m.title + ' を削除'} className="absolute right-2 top-3 rounded-full p-3 text-slate-400 hover:bg-red-50 hover:text-red-500">
+                      <Trash2 className="h-5 w-5" />
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
     </div>
@@ -708,30 +758,30 @@ const HistoryDetailView = ({
         <h2 className="text-xl font-bold mx-auto pr-8">対戦詳細</h2>
       </div>
 
-      <div className="p-4 flex flex-col gap-4 overflow-y-auto pb-10">
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100 relative">
+      <div className="grid min-h-0 content-start items-start gap-4 overflow-y-auto p-4 pb-10 lg:grid-cols-2">
+        <div className="min-w-0 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100 relative [overflow-wrap:anywhere]">
           
           {isEditing ? (
-            <div className="flex flex-col gap-4 mb-4 border-b border-slate-100 pb-4">
+            <div className="grid gap-4 mb-4 border-b border-slate-100 pb-4 sm:grid-cols-2">
               <div>
                 <label className="block text-xs font-bold text-slate-500 mb-1">対戦日</label>
-                <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <input type="date" value={editDate} onChange={e => setEditDate(e.target.value)} className="w-full min-w-0 border border-slate-200 rounded-lg p-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
               <div>
                 <label className="block text-xs font-bold text-slate-500 mb-1">カテゴリ</label>
-                <select value={editCategory} onChange={e => setEditCategory(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <select value={editCategory} onChange={e => setEditCategory(e.target.value)} className="w-full min-w-0 border border-slate-200 rounded-lg p-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500">
                   {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
-              <div>
+              <div className="sm:col-span-2">
                 <label className="block text-xs font-bold text-slate-500 mb-1">タイトル</label>
-                <input type="text" value={editTitle} onChange={e => setEditTitle(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <input type="text" value={editTitle} onChange={e => setEditTitle(e.target.value)} className="w-full min-w-0 border border-slate-200 rounded-lg p-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
-              <div>
+              <div className="sm:col-span-2">
                 <label className="block text-xs font-bold text-slate-500 mb-1">メモ</label>
-                <textarea value={editMemo} onChange={e => setEditMemo(e.target.value)} className="w-full border border-slate-200 rounded-lg p-2 text-sm h-20 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                <textarea value={editMemo} onChange={e => setEditMemo(e.target.value)} className="w-full min-w-0 border border-slate-200 rounded-lg p-3 text-sm h-20 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500" />
               </div>
-              <div className="flex gap-3 mt-2">
+              <div className="flex gap-3 mt-2 sm:col-span-2">
                 <button onClick={handleCancelEdit} disabled={isSaving} className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 rounded-xl font-bold transition-colors">キャンセル</button>
                 <button onClick={handleSaveEdit} disabled={isSaving} className="flex-1 bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold flex items-center justify-center gap-2 shadow-md transition-colors">
                   {isSaving ? <Loader2 className="w-4 h-4 animate-spin"/> : '保存する'}
@@ -751,13 +801,13 @@ const HistoryDetailView = ({
           )}
 
           <div className="flex items-center justify-between gap-3 mb-4 border-t border-slate-100 pt-4">
-             <div className="flex-1 text-center">
+             <div className="min-w-0 flex-1 text-center">
                 <span className="text-xs font-bold text-red-500 block">{pA?.name}</span>
                 <span className="text-xs text-slate-400 block truncate">{match.handicapSnapshot?.playerA || getHandicapDisplay(pA)}</span>
                 <span className="text-3xl font-black">{match.finalScore.playerA}</span>
              </div>
              <span className="text-slate-300 font-black text-xl">-</span>
-             <div className="flex-1 text-center">
+             <div className="min-w-0 flex-1 text-center">
                 <span className="text-xs font-bold text-blue-500 block">{pB?.name}</span>
                 <span className="text-xs text-slate-400 block truncate">{match.handicapSnapshot?.playerB || getHandicapDisplay(pB)}</span>
                 <span className="text-3xl font-black">{match.finalScore.playerB}</span>
@@ -783,38 +833,38 @@ const HistoryDetailView = ({
           )}
         </div>
 
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden mt-2">
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden min-w-0">
           <h4 className="font-bold text-slate-700 p-4 border-b bg-slate-50">ラウンド詳細</h4>
           {match.rounds.length > 0 ? (
-            <table className="w-full text-sm text-left">
+            <table className="w-full table-fixed text-sm text-left [overflow-wrap:anywhere]">
               <thead className="bg-slate-50 text-xs text-slate-500 border-b border-slate-200">
                 <tr>
-                  <th className="px-4 py-3">No</th>
-                  <th className="px-4 py-3">出題・回答</th>
-                  <th className="px-4 py-3 text-center">結果</th>
-                  <th className="px-4 py-3 text-right">得点</th>
+                  <th className="w-11 px-2 py-3 sm:w-14">No</th>
+                  <th className="px-2 py-3">出題・回答</th>
+                  <th className="w-12 px-2 py-3 text-center sm:w-16">結果</th>
+                  <th className="w-16 px-2 py-3 text-right sm:w-24">得点</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {match.rounds.map((r: Round) => (
                   <tr key={r.roundNo} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-4 py-4 font-bold text-slate-500">{r.roundNo}</td>
-                    <td className="px-4 py-4">
+                    <td className="px-2 py-4 font-bold text-slate-500">{r.roundNo}</td>
+                    <td className="px-2 py-4">
                       <div className="flex flex-col gap-1">
                         <div className="flex items-center gap-1 text-[10px] text-slate-400">
-                          <Volume2 className="w-3 h-3"/> <span>{getPlayerName(r.questionerId)}</span>
+                          <Volume2 className="w-3 h-3 shrink-0"/> <span>{getPlayerName(r.questionerId)}</span>
                         </div>
                         <div className="flex items-center gap-1 text-[11px] font-bold text-slate-700">
                           <span className="opacity-50">↳</span> <span>{getPlayerName(r.answererId)}</span>
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-4 text-center">
+                    <td className="px-2 py-4 text-center">
                       {r.result === 'correct' && <Check className="w-5 h-5 text-emerald-500 mx-auto"/>}
                       {r.result === 'incorrect' && <X className="w-5 h-5 text-red-500 mx-auto"/>}
                       {r.result === 'timeout' && <Clock className="w-4 h-4 text-amber-500 mx-auto"/>}
                     </td>
-                    <td className="px-4 py-4 font-bold text-indigo-600 text-right truncate max-w-[80px]">
+                    <td className="px-2 py-4 font-bold text-indigo-600 text-right">
                       {getPlayerName(r.pointPlayerId)}
                     </td>
                   </tr>
@@ -886,49 +936,49 @@ const StatsView = ({ matches, players, setCurrentView }: StatsProps) => {
         <h2 className="text-xl font-bold mx-auto pr-8">成績分析</h2>
       </div>
 
-      <div className="p-4 flex flex-col gap-6 overflow-y-auto pb-10">
+      <div className="min-h-0 overflow-y-auto p-4 pb-10 sm:p-6">
         {statsData.length === 0 ? (
            <div className="text-center text-slate-400 mt-10 font-bold">データがありません</div>
         ) : (
-          <>
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+          <div className="grid gap-6 sm:grid-cols-2">
+            <div className="min-w-0 bg-white p-4 lg:p-5 rounded-2xl shadow-sm border border-slate-100">
               <h3 className="font-bold text-slate-700 mb-4">ランキング・勝率比較</h3>
-              <div className="h-64 w-full">
+              <div className="h-72 w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={statsData} margin={{ top: 10, right: 10, left: -20, bottom: 40 }}>
+                  <BarChart data={statsData} margin={{ top: 10, right: 10, left: 8, bottom: 8 }}>
                     <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e2e8f0" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fontWeight: 'bold' }} angle={-45} textAnchor="end" />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
+                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fontSize: 12, fontWeight: 'bold' }} angle={-35} textAnchor="end" height={86} tickMargin={8} />
+                    <YAxis width={36} axisLine={false} tickLine={false} tick={{ fontSize: 12 }} />
                     <RechartsTooltip cursor={{fill: '#f1f5f9'}} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <Bar dataKey="winRate" fill="#3b82f6" radius={[6, 6, 0, 0]} name="勝率(%)" barSize={40} />
+                    <Bar dataKey="winRate" fill="#3b82f6" radius={[6, 6, 0, 0]} name="勝率(%)" maxBarSize={40} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
             </div>
 
-            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+            <div className="min-w-0 bg-white p-4 lg:p-5 rounded-2xl shadow-sm border border-slate-100">
               <h3 className="font-bold text-slate-700 mb-4">プレイしたカテゴリ</h3>
-              <div className="h-72 w-full relative">
+              <div className="h-60 w-full sm:h-72">
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
-                    <Pie data={pieData} cx="50%" cy="45%" innerRadius={50} outerRadius={70} paddingAngle={5} dataKey="value">
+                    <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={70} paddingAngle={5} dataKey="value">
                       {pieData.map((_, index) => (
                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                       ))}
                     </Pie>
                     <RechartsTooltip contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <Legend verticalAlign="bottom" height={36} wrapperStyle={{ fontSize: '12px', fontWeight: 'bold' }} />
+                    <Legend verticalAlign="bottom" wrapperStyle={{ fontSize: '12px', fontWeight: 'bold' }} />
                   </PieChart>
                 </ResponsiveContainer>
-                <div className="absolute inset-0 flex items-center justify-center pointer-events-none flex-col" style={{ marginTop: '-36px' }}>
-                   <span className="text-3xl font-black text-slate-700">{matches.length}</span>
-                   <span className="text-xs font-bold text-slate-400">Games</span>
-                </div>
+              </div>
+              <div className="flex items-center justify-center gap-2">
+                <span className="text-3xl font-black text-slate-700">{matches.length}</span>
+                <span className="text-xs font-bold text-slate-400">Games</span>
               </div>
             </div>
 
-            <div className="flex flex-col gap-3">
-              <h3 className="font-bold text-slate-700 ml-1">カテゴリ別成績</h3>
+            <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2 lg:grid-cols-3">
+              <h3 className="font-bold text-slate-700 ml-1 col-span-full">カテゴリ別成績</h3>
               {Object.keys(categoryPlayerStats).map(cat => {
                 const stat = categoryPlayerStats[cat];
                 return (
@@ -945,7 +995,7 @@ const StatsView = ({ matches, players, setCurrentView }: StatsProps) => {
                         const avgScore = pStat.games > 0 ? (pStat.score / pStat.games).toFixed(1) : "0.0";
                         return (
                           <div key={pId} className="flex justify-between items-center text-sm bg-slate-50 p-2 rounded-lg">
-                            <span className="font-bold text-slate-700 w-20 truncate">{player.name}</span>
+                            <span className="font-bold text-slate-700 w-20 min-w-0 truncate">{player.name}</span>
                             <div className="flex flex-1 justify-around text-center">
                               <div>
                                 <span className="text-[10px] text-slate-400 block mb-0.5">勝率</span>
@@ -968,7 +1018,7 @@ const StatsView = ({ matches, players, setCurrentView }: StatsProps) => {
                 );
               })}
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>
@@ -1076,8 +1126,8 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
         <h2 className="text-xl font-bold mx-auto pr-8">設定</h2>
       </div>
 
-      <div className="p-5 flex flex-col gap-6 overflow-y-auto pb-32">
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+      <div className="grid min-h-0 flex-1 content-start items-start gap-6 overflow-y-auto p-4 sm:p-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
+        <div className="min-w-0 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100">
           <div className="flex justify-between items-center mb-4">
              <h3 className="font-bold text-slate-700 flex items-center gap-2"><User className="w-5 h-5"/> プレイヤー管理</h3>
              <button onClick={addPlayer} className="text-sm font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full flex items-center gap-1">
@@ -1089,7 +1139,7 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
             {activeEditingPlayers.map((p, index) => (
               <div key={p.id} className={`relative flex flex-col gap-3 ${index !== 0 ? 'pt-6 border-t border-slate-100' : ''}`}>
                  <div className="flex items-center gap-3">
-                    <div className="flex-1 w-full min-w-[200px]">
+                    <div className="min-w-0 flex-1">
                       <input 
                         type="text" 
                         value={p.name} 
@@ -1108,7 +1158,7 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
                          <option value="custom">カスタム設定</option>
                       </select>
                       {p.handicap === 'custom' && (
-                        <div className="flex flex-col gap-4 mt-4 w-full bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        <div className="flex flex-col gap-4 mt-4 w-full bg-slate-50 p-2 sm:p-4 rounded-xl border border-slate-200">
                           {/* 初期スコア設定 (クイックボタン + スコア表示) */}
                           <div>
                             <label className="block text-xs font-bold text-slate-500 mb-2 text-center">
@@ -1118,17 +1168,17 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
                               <div className="flex justify-center gap-2">
                                 <button
                                   onClick={() => adjustCustomValue(p.id, 'customScoreOffset', -1)}
-                                  className="w-12 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-xl active:bg-slate-100 text-slate-700 shadow-sm"
+                                  className="w-11 h-12 shrink-0 flex items-center justify-center bg-white border border-slate-300 rounded-xl active:bg-slate-100 text-slate-700 shadow-sm"
                                 >
                                   <Minus className="w-6 h-6" />
                                 </button>
-                                <div className="w-24 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-xl font-black text-2xl text-slate-800 shadow-inner">
+                                <div className="w-24 min-w-0 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-xl font-black text-2xl text-slate-800 shadow-inner">
                                   {(Number(p.customScoreOffset) || 0) > 0 ? '+' : ''}
                                   {Number(p.customScoreOffset) || 0}
                                 </div>
                                 <button
                                   onClick={() => adjustCustomValue(p.id, 'customScoreOffset', 1)}
-                                  className="w-12 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-xl active:bg-slate-100 text-slate-700 shadow-sm"
+                                  className="w-11 h-12 shrink-0 flex items-center justify-center bg-white border border-slate-300 rounded-xl active:bg-slate-100 text-slate-700 shadow-sm"
                                 >
                                   <Plus className="w-6 h-6" />
                                 </button>
@@ -1147,44 +1197,44 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
                               <div className="flex justify-center gap-2">
                                 <button
                                   onClick={() => adjustCustomValue(p.id, 'customTimeOffset', -1)}
-                                  className="w-12 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-xl active:bg-slate-100 text-slate-700 shadow-sm"
+                                  className="w-11 h-12 shrink-0 flex items-center justify-center bg-white border border-slate-300 rounded-xl active:bg-slate-100 text-slate-700 shadow-sm"
                                 >
                                   <Minus className="w-6 h-6" />
                                 </button>
-                                <div className="w-32 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-xl font-black text-2xl text-slate-800 shadow-inner">
+                                <div className="w-32 min-w-0 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-xl font-black text-2xl text-slate-800 shadow-inner">
                                   {(Number(p.customTimeOffset) || 0) > 0 ? '+' : ''}
                                   {Number(p.customTimeOffset) || 0}秒
                                 </div>
                                 <button
                                   onClick={() => adjustCustomValue(p.id, 'customTimeOffset', 1)}
-                                  className="w-12 h-12 flex items-center justify-center bg-white border border-slate-300 rounded-xl active:bg-slate-100 text-slate-700 shadow-sm"
+                                  className="w-11 h-12 shrink-0 flex items-center justify-center bg-white border border-slate-300 rounded-xl active:bg-slate-100 text-slate-700 shadow-sm"
                                 >
                                   <Plus className="w-6 h-6" />
                                 </button>
                               </div>
 
-                              <div className="flex justify-center gap-2">
+                              <div className="grid grid-cols-2 gap-2 min-[375px]:grid-cols-4">
                                 <button
                                   onClick={() => adjustCustomValue(p.id, 'customTimeOffset', -10)}
-                                  className="flex-1 max-w-[80px] h-11 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-600 active:bg-slate-100 shadow-sm transition-colors"
+                                  className="h-11 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-600 active:bg-slate-100 shadow-sm transition-colors"
                                 >
                                   -10秒
                                 </button>
                                 <button
                                   onClick={() => adjustCustomValue(p.id, 'customTimeOffset', -5)}
-                                  className="flex-1 max-w-[80px] h-11 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-600 active:bg-slate-100 shadow-sm transition-colors"
+                                  className="h-11 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-600 active:bg-slate-100 shadow-sm transition-colors"
                                 >
                                   -5秒
                                 </button>
                                 <button
                                   onClick={() => adjustCustomValue(p.id, 'customTimeOffset', 5)}
-                                  className="flex-1 max-w-[80px] h-11 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-600 active:bg-slate-100 shadow-sm transition-colors"
+                                  className="h-11 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-600 active:bg-slate-100 shadow-sm transition-colors"
                                 >
                                   +5秒
                                 </button>
                                 <button
                                   onClick={() => adjustCustomValue(p.id, 'customTimeOffset', 10)}
-                                  className="flex-1 max-w-[80px] h-11 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-600 active:bg-slate-100 shadow-sm transition-colors"
+                                  className="h-11 bg-white border border-slate-300 rounded-lg text-sm font-bold text-slate-600 active:bg-slate-100 shadow-sm transition-colors"
                                 >
                                   +10秒
                                 </button>
@@ -1194,8 +1244,8 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
                         </div>
                       )}
                     </div>
-                    <button onClick={() => removePlayer(p.id)} className="p-3 text-red-400 hover:bg-red-50 rounded-lg transition-colors ml-auto self-start mt-1">
-                      <Trash2 className="w-6 h-6" />
+                    <button onClick={() => removePlayer(p.id)} className="shrink-0 p-2 text-red-400 hover:bg-red-50 rounded-lg transition-colors ml-auto self-start mt-1">
+                      <Trash2 className="w-5 h-5" />
                     </button>
                  </div>
               </div>
@@ -1203,7 +1253,7 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
           </div>
         </div>
 
-        <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-100">
+        <div className="min-w-0 bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-100">
            <h3 className="font-bold text-slate-700 mb-4">システム設定</h3>
            <div className="flex items-center justify-between py-2 border-b border-slate-50">
               <div className="flex items-center gap-3">
@@ -1298,11 +1348,11 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
         </div>
       </div>
       
-      <div className="absolute bottom-0 left-0 right-0 p-4 bg-white border-t shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)]">
+      <div className="shrink-0 p-4 bg-white border-t shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.05)]">
         <button 
           onClick={handleSave} 
           disabled={isSaving}
-          className="w-full bg-slate-800 hover:bg-slate-900 disabled:bg-slate-400 text-white font-bold text-xl p-4 rounded-xl shadow-md active:scale-95 transition-all flex items-center justify-center gap-2"
+          className="mx-auto w-full max-w-sm bg-slate-800 hover:bg-slate-900 disabled:bg-slate-400 text-white font-bold text-xl p-4 rounded-xl shadow-md active:scale-95 transition-all flex items-center justify-center gap-2"
         >
           {isSaving ? <Loader2 className="w-6 h-6 animate-spin" /> : '設定を保存する'}
         </button>
@@ -1578,7 +1628,7 @@ export default function App() {
 
   if (!user && !isSampleMode) {
     return (
-      <div className="w-full max-w-md mx-auto h-screen bg-slate-100 overflow-hidden shadow-2xl relative select-none font-sans text-slate-800">
+      <div className="w-full max-w-6xl mx-auto h-dvh bg-slate-100 overflow-hidden shadow-2xl relative select-none font-sans text-slate-800">
         <ErrorToast msg={appError} onClose={() => setAppError('')} />
         <LoginView setIsSampleMode={handleSampleModeChange} setErrorMsg={setAppError} />
       </div>
@@ -1586,14 +1636,14 @@ export default function App() {
   }
 
   return (
-    <div className={`w-full ${currentView === 'debt' || currentView === 'debt_award' ? 'max-w-7xl' : 'max-w-md'} mx-auto h-screen bg-slate-100 overflow-hidden shadow-2xl relative select-none font-sans text-slate-800 flex flex-col`}>
+    <div className={`w-full ${currentView === 'debt' || currentView === 'debt_award' ? 'max-w-7xl h-screen' : 'max-w-6xl h-dvh'} mx-auto bg-slate-100 overflow-hidden shadow-2xl relative select-none font-sans text-slate-800 flex flex-col`}>
       {isSampleMode && (
         <div className="bg-amber-500 text-white text-[11px] font-bold py-1 px-4 text-center z-50 flex items-center justify-center gap-1 shrink-0">
           <AlertCircle className="w-3 h-3" /> サンプルモード中（この端末にのみ保存されます）
         </div>
       )}
       
-      <div className="flex-1 relative overflow-hidden">
+      <div className="min-h-0 flex-1 relative overflow-hidden">
         <ErrorToast msg={appError} onClose={() => setAppError('')} />
         
         {currentView === 'home' && (

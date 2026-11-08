@@ -160,105 +160,109 @@ export const BattleView = ({ players, battleState, setBattleState, soundEnabled,
 
   return (
     <div className="flex flex-col h-full bg-slate-50 relative">
-      <div className="bg-slate-900 text-slate-300 text-xs py-1.5 px-4 text-center truncate font-bold">
+      <div className="shrink-0 bg-slate-900 text-slate-300 text-xs py-1.5 px-4 text-center truncate font-bold">
         {battleState.category} - {battleState.title}
       </div>
 
-      <div className="bg-slate-800 text-white p-4 flex justify-between items-center shadow-md z-10">
-        <div className="flex flex-col items-center flex-1">
-          <span className="text-xs font-bold opacity-80">{pA?.name} (赤)</span>
-          <span className="text-5xl font-black text-red-400">{battleState.scores.playerA}</span>
+      <div className="shrink-0 bg-slate-800 text-white px-3 py-2 sm:p-4 flex justify-between items-center shadow-md z-10">
+        <div className="flex min-w-0 flex-1 flex-col items-center">
+          <span className="w-full truncate text-center text-xs font-bold opacity-80 sm:text-base">{pA?.name} (赤)</span>
+          <span className="text-4xl font-black tabular-nums sm:text-6xl text-red-400">{battleState.scores.playerA}</span>
         </div>
-        <div className="flex flex-col items-center px-4 border-x border-slate-600">
+        <div className="flex shrink-0 flex-col items-center px-3 sm:px-8 border-x border-slate-600">
           <span className="text-xs text-slate-400">ラウンド</span>
           <span className="text-xl font-bold">{battleState.currentRound}</span>
         </div>
-        <div className="flex flex-col items-center flex-1">
-          <span className="text-xs font-bold opacity-80">{pB?.name} (青)</span>
-          <span className="text-5xl font-black text-blue-400">{battleState.scores.playerB}</span>
+        <div className="flex min-w-0 flex-1 flex-col items-center">
+          <span className="w-full truncate text-center text-xs font-bold opacity-80 sm:text-base">{pB?.name} (青)</span>
+          <span className="text-4xl font-black tabular-nums sm:text-6xl text-blue-400">{battleState.scores.playerB}</span>
         </div>
       </div>
 
-      <div className="flex-1 p-4 flex flex-col gap-4 overflow-y-auto pb-32">
-        <div className="flex gap-3 h-24 relative">
-          <div className={`flex-1 rounded-xl border-2 p-3 shadow-sm flex flex-col justify-center ${isQuestionerA ? 'border-red-400 bg-red-50 text-red-900' : 'border-blue-400 bg-blue-50 text-blue-900'}`}>
-            <span className="text-[10px] font-bold opacity-70 mb-1 flex items-center justify-center gap-1"><Volume2 className="w-3 h-3"/> 出題する人</span>
-            <span className="font-black text-xl text-center truncate">{qPlayer?.name}</span>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto grid w-full max-w-5xl gap-3 p-4 sm:gap-4 sm:p-6 lg:min-h-full lg:grid-cols-[minmax(0,1fr)_16rem_minmax(0,1fr)] lg:content-center lg:items-center [@media(max-height:550px)]:gap-1.5 [@media(max-height:550px)]:py-2">
+          <div className="grid grid-cols-2 gap-3 lg:contents">
+            <div className={`min-w-0 rounded-xl border-2 p-2 sm:p-4 [@media(max-height:550px)]:py-1 lg:col-start-1 lg:row-start-1 shadow-sm flex flex-col justify-center ${isQuestionerA ? 'border-red-400 bg-red-50 text-red-900' : 'border-blue-400 bg-blue-50 text-blue-900'}`}>
+              <span className="text-[10px] font-bold opacity-70 mb-1 flex items-center justify-center gap-1"><Volume2 className="w-3 h-3"/> 出題する人</span>
+              <span className="font-black text-lg sm:text-2xl text-center truncate">{qPlayer?.name}</span>
+            </div>
+            <div className={`min-w-0 rounded-xl border-2 p-2 sm:p-4 [@media(max-height:550px)]:py-1 lg:col-start-3 lg:row-start-1 shadow-sm flex flex-col justify-center ${!isQuestionerA ? 'border-red-400 bg-red-50 text-red-900' : 'border-blue-400 bg-blue-50 text-blue-900'}`}>
+              <span className="text-[10px] font-bold opacity-70 mb-1 flex items-center justify-center gap-1">✍️ 答える人</span>
+              <span className="font-black text-lg sm:text-2xl text-center truncate">{aPlayer?.name}</span>
+            </div>
           </div>
-          <div className={`flex-1 rounded-xl border-2 p-3 shadow-sm flex flex-col justify-center ${!isQuestionerA ? 'border-red-400 bg-red-50 text-red-900' : 'border-blue-400 bg-blue-50 text-blue-900'}`}>
-            <span className="text-[10px] font-bold opacity-70 mb-1 flex items-center justify-center gap-1">✍️ 答える人</span>
-            <span className="font-black text-xl text-center truncate">{aPlayer?.name}</span>
+
+          <div className={`my-1 size-36 sm:size-48 lg:size-56 lg:col-start-2 lg:row-start-1 [@media(max-height:550px)]:my-0 [@media(max-height:550px)]:size-24 rounded-full mx-auto flex flex-col items-center justify-center border-8 transition-all duration-300 shadow-inner ${timeLeft <= 5 ? 'bg-red-100 border-red-600 scale-110 shadow-[0_0_30px_rgba(220,38,38,0.5)] animate-pulse' : 'bg-white border-slate-200'}`}>
+             <span className={`text-5xl font-black tabular-nums sm:text-7xl [@media(max-height:550px)]:text-4xl ${timeLeft <= 5 ? 'text-red-600' : 'text-slate-700'}`}>
+               {timeLeft}
+             </span>
+             <span className="text-slate-400 font-bold">秒</span>
           </div>
-        </div>
 
-        <div className={`mt-4 rounded-full w-48 h-48 mx-auto flex flex-col items-center justify-center border-8 transition-all duration-300 shadow-inner ${timeLeft <= 5 ? 'bg-red-100 border-red-600 scale-110 shadow-[0_0_30px_rgba(220,38,38,0.5)] animate-pulse' : 'bg-white border-slate-200'}`}>
-           <span className={`text-7xl font-black ${timeLeft <= 5 ? 'text-red-600' : 'text-slate-700'}`}>
-             {timeLeft}
-           </span>
-           <span className="text-slate-400 font-bold">秒</span>
-        </div>
+          <div className="flex justify-center empty:hidden lg:col-span-full">
+            {battleState.rounds.length > 0 && !isTimerRunning && !confirmDialog.show && (
+              <button onClick={undoLastRound} className="text-slate-400 text-sm font-bold flex items-center gap-1 hover:text-slate-600 transition-colors bg-white px-4 py-1.5 rounded-full border border-slate-200 shadow-sm">
+                <Undo2 className="w-4 h-4" /> 1つ前の回答を取り消す
+              </button>
+            )}
+          </div>
 
-        <div className="flex justify-center mt-2 h-8">
-          {battleState.rounds.length > 0 && !isTimerRunning && !confirmDialog.show && (
-            <button onClick={undoLastRound} className="text-slate-400 text-sm font-bold flex items-center gap-1 hover:text-slate-600 transition-colors bg-white px-4 py-1.5 rounded-full border border-slate-200 shadow-sm">
-              <Undo2 className="w-4 h-4" /> 1つ前の回答を取り消す
+          {!isTimerRunning && timeLeft === effectiveTimeLimit && !confirmDialog.show && (
+            <button
+              onClick={event => {
+                if (timerPhase.current !== 'idle') return;
+                timerPhase.current = 'running';
+                if (soundEnabled) {
+                  void playStartSound(event.nativeEvent);
+                }
+                setIsTimerRunning(true);
+              }}
+              className="lg:col-span-full bg-slate-800 text-white font-bold text-xl sm:text-2xl py-3 sm:py-5 rounded-2xl shadow-xl active:scale-95 transition-transform w-full max-w-xs mx-auto flex justify-center gap-2 items-center"
+            >
+              <Play fill="currentColor" className="w-6 h-6" /> スタート！
             </button>
           )}
+
+          {isTimerRunning && (
+             <div className="lg:col-span-full text-center text-slate-500 font-bold animate-bounce">
+               考え中...
+             </div>
+          )}
         </div>
-
-        {!isTimerRunning && timeLeft === effectiveTimeLimit && !confirmDialog.show && (
-          <button
-            onClick={event => {
-              if (timerPhase.current !== 'idle') return;
-              timerPhase.current = 'running';
-              if (soundEnabled) {
-                void playStartSound(event.nativeEvent);
-              }
-              setIsTimerRunning(true);
-            }}
-            className="mt-4 bg-slate-800 text-white font-bold text-2xl py-5 rounded-2xl shadow-xl active:scale-95 transition-transform w-full max-w-xs mx-auto flex justify-center gap-2 items-center"
-          >
-            <Play fill="currentColor" className="w-6 h-6" /> スタート！
-          </button>
-        )}
-
-        {isTimerRunning && (
-           <div className="mt-6 text-center text-slate-500 font-bold animate-bounce">
-             考え中...
-           </div>
-        )}
       </div>
 
-      <div className="bg-white p-4 border-t shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.1)] sticky bottom-0 z-20">
-        <div className="flex gap-3 mb-4">
-           <button
-             disabled={!isTimerRunning}
-             onClick={() => showRoundResult('incorrect')}
-             className={`flex-1 py-6 rounded-2xl font-black text-2xl flex flex-col items-center gap-2 transition-all ${isTimerRunning ? 'bg-red-500 text-white shadow-[0_6px_0_#991b1b] active:translate-y-2 active:shadow-none' : 'bg-slate-200 text-slate-400'}`}
-           >
-             <X className="w-10 h-10 stroke-[3]" />
-             不正解
-           </button>
-           <button
-             disabled={!isTimerRunning}
-             onClick={() => showRoundResult('correct')}
-             className={`flex-1 py-6 rounded-2xl font-black text-2xl flex flex-col items-center gap-2 transition-all ${isTimerRunning ? 'bg-emerald-500 text-white shadow-[0_6px_0_#065f46] active:translate-y-2 active:shadow-none' : 'bg-slate-200 text-slate-400'}`}
-           >
-             <Check className="w-10 h-10 stroke-[3]" />
-             正解
-           </button>
+      <div className="shrink-0 bg-white px-4 py-3 sm:p-4 border-t shadow-[0_-10px_15px_-3px_rgba(0,0,0,0.1)] z-20">
+        <div className="mx-auto w-full max-w-3xl">
+          <div className="flex gap-3 mb-2 sm:mb-4">
+             <button
+               disabled={!isTimerRunning}
+               onClick={() => showRoundResult('incorrect')}
+               className={`flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl py-2 font-black text-xl sm:py-4 sm:text-2xl transition-all ${isTimerRunning ? 'bg-red-500 text-white shadow-[0_6px_0_#991b1b] active:translate-y-2 active:shadow-none' : 'bg-slate-200 text-slate-400'}`}
+             >
+               <X className="size-7 shrink-0 stroke-[3] sm:size-10" />
+               不正解
+             </button>
+             <button
+               disabled={!isTimerRunning}
+               onClick={() => showRoundResult('correct')}
+               className={`flex min-h-12 flex-1 items-center justify-center gap-2 rounded-2xl py-2 font-black text-xl sm:py-4 sm:text-2xl transition-all ${isTimerRunning ? 'bg-emerald-500 text-white shadow-[0_6px_0_#065f46] active:translate-y-2 active:shadow-none' : 'bg-slate-200 text-slate-400'}`}
+             >
+               <Check className="size-7 shrink-0 stroke-[3] sm:size-10" />
+               正解
+             </button>
+          </div>
+          <button
+            onClick={requestFinish}
+            className="w-full min-h-11 py-2 bg-slate-100 text-slate-600 font-bold rounded-xl border border-slate-200 active:bg-slate-200 transition-colors"
+          >
+            対戦を終了する
+          </button>
         </div>
-        <button
-          onClick={requestFinish}
-          className="w-full py-3 bg-slate-100 text-slate-600 font-bold rounded-xl border border-slate-200 active:bg-slate-200 transition-colors"
-        >
-          対戦を終了する
-        </button>
       </div>
 
       {showFinishConfirm && (
-        <div className="absolute inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-4">
-           <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl text-center animate-in zoom-in-95 duration-200 relative">
+        <div className="absolute inset-0 bg-slate-900/60 z-50 flex flex-col items-center overflow-y-auto p-4">
+           <div className="my-auto shrink-0 bg-white rounded-2xl p-4 sm:p-6 w-full max-w-sm shadow-2xl text-center animate-in zoom-in-95 duration-200 relative">
               {isSaving && (
                 <div className="absolute inset-0 bg-white/80 z-10 flex flex-col items-center justify-center rounded-2xl backdrop-blur-sm">
                   <Loader2 className="w-12 h-12 text-blue-600 animate-spin mb-3 drop-shadow-md" />
@@ -299,37 +303,39 @@ export const BattleView = ({ players, battleState, setBattleState, soundEnabled,
       )}
 
       {confirmDialog.show && (
-        <div className={`absolute inset-0 z-50 flex flex-col items-center justify-center p-6 transition-all duration-300 ${confirmDialog.result === 'correct' ? 'bg-emerald-500' : confirmDialog.result === 'incorrect' ? 'bg-red-500' : 'bg-amber-500'}`}>
-          {confirmDialog.result === 'correct' && <Check className="w-40 h-40 text-white mx-auto mb-4 drop-shadow-lg" />}
-          {confirmDialog.result === 'incorrect' && <X className="w-40 h-40 text-white mx-auto mb-4 drop-shadow-lg" />}
-          {confirmDialog.result === 'timeout' && <Clock className="w-40 h-40 text-white mx-auto mb-4 drop-shadow-lg" />}
+        <div className={`absolute inset-0 z-50 overflow-y-auto p-4 sm:p-6 transition-all duration-300 ${confirmDialog.result === 'correct' ? 'bg-emerald-500' : confirmDialog.result === 'incorrect' ? 'bg-red-500' : 'bg-amber-500'}`}>
+          <div className="flex min-h-full flex-col items-center justify-center text-center">
+            {confirmDialog.result === 'correct' && <Check className="size-20 shrink-0 sm:size-32 [@media(max-height:550px)]:size-16 text-white mx-auto mb-4 drop-shadow-lg" />}
+            {confirmDialog.result === 'incorrect' && <X className="size-20 shrink-0 sm:size-32 [@media(max-height:550px)]:size-16 text-white mx-auto mb-4 drop-shadow-lg" />}
+            {confirmDialog.result === 'timeout' && <Clock className="size-20 shrink-0 sm:size-32 [@media(max-height:550px)]:size-16 text-white mx-auto mb-4 drop-shadow-lg" />}
 
-          <h3 className="text-5xl font-black text-white mb-2 drop-shadow-md">
-            {confirmDialog.result === 'correct' ? '正解！' : confirmDialog.result === 'incorrect' ? '不正解...' : '時間切れ！'}
-          </h3>
-          <p className="text-2xl font-bold text-white mt-4 bg-black/20 px-6 py-2 rounded-full">
-            得点ゲット: {confirmDialog.result === 'correct' ? aPlayer?.name : qPlayer?.name}
-          </p>
+            <h3 className="text-4xl font-black sm:text-5xl text-white mb-2 drop-shadow-md">
+              {confirmDialog.result === 'correct' ? '正解！' : confirmDialog.result === 'incorrect' ? '不正解...' : '時間切れ！'}
+            </h3>
+            <p className="text-lg sm:text-2xl font-bold text-white mt-3 bg-black/20 px-4 py-2 rounded-2xl [overflow-wrap:anywhere]">
+              得点ゲット: {confirmDialog.result === 'correct' ? aPlayer?.name : qPlayer?.name}
+            </p>
 
-          <div className="mt-12 w-full flex flex-col gap-4 max-w-xs">
-            <button
-              onClick={confirmResult}
-              className="w-full py-5 bg-white text-slate-800 font-black rounded-2xl shadow-xl text-2xl active:scale-95 transition-transform"
-            >
-              次へ
-            </button>
-            <button
-              onClick={() => {
-                if (timerPhase.current !== 'confirming') return;
-                const retry = confirmDialog.result !== 'timeout';
-                timerPhase.current = retry ? 'running' : 'idle';
-                setConfirmDialog({show: false, result: null});
-                if (retry) setIsTimerRunning(true);
-              }}
-              className="w-full py-4 bg-transparent border-2 border-white/50 text-white font-bold rounded-2xl active:bg-white/10 transition-colors text-lg"
-            >
-              やり直す
-            </button>
+            <div className="mt-5 sm:mt-8 w-full flex flex-col gap-3 max-w-xs">
+              <button
+                onClick={confirmResult}
+                className="w-full py-5 bg-white text-slate-800 font-black rounded-2xl shadow-xl text-2xl active:scale-95 transition-transform"
+              >
+                次へ
+              </button>
+              <button
+                onClick={() => {
+                  if (timerPhase.current !== 'confirming') return;
+                  const retry = confirmDialog.result !== 'timeout';
+                  timerPhase.current = retry ? 'running' : 'idle';
+                  setConfirmDialog({show: false, result: null});
+                  if (retry) setIsTimerRunning(true);
+                }}
+                className="w-full py-4 bg-transparent border-2 border-white/50 text-white font-bold rounded-2xl active:bg-white/10 transition-colors text-lg"
+              >
+                やり直す
+              </button>
+            </div>
           </div>
         </div>
       )}
