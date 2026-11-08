@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import type { CollectionReference, DocumentData } from 'firebase/firestore';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { balanceFor, compareEntries, DebtError, graphPoints, latestEntries, pairs, people, personIds, validPair } from './debtLedger';
+import { balanceFor, compareEntries, DebtError, graphPairs, graphPoints, latestEntries, people, personIds, validPair } from './debtLedger';
 import type { DebtChange, DebtEntry, DebtType, MatchSnapshot, Pair, Period, PersonId } from './debtLedger';
 import { saveDebtChange, watchEntries, watchRevisions } from './debtLedgerStore';
 
@@ -83,7 +83,7 @@ function EntryForm({ draft, entries, today, onSave, onBack }: {
   }
 
   return (
-    <form className={panel} onSubmit={submit}>
+    <form className={panel + ' mx-auto max-w-3xl'} onSubmit={submit}>
       <h2 className="text-xl font-bold">{title}</h2>
       <fieldset disabled={saving} className="min-w-0 space-y-3">
         {voiding ? <p className="break-words">{previous && pairName(previous)} の取引を取り消します。履歴は残ります。</p> : <>
@@ -153,27 +153,91 @@ function EntryDetail({ ledger, entry, sample, onDraft, onBack }: {
   const actions = { create: '登録', update: '変更', void: '取消' };
   return <>
     <button className={secondary} onClick={onBack}>台帳に戻る</button>
-    <section className={panel}>
-      <h2 className="text-xl font-bold">取引詳細</h2>
-      <h3 className="font-bold">現在値 · v{entry.revision}</h3>
-      <EntryInfo entry={entry} />
-      {entry.status === 'active' && <div className="flex gap-2">
-        <button className={button} onClick={() => onDraft({ type: entry.type, previous: entry })}>編集</button>
-        <button className={secondary} onClick={() => onDraft({ type: entry.type, previous: entry, voiding: true })}>取消</button>
-      </div>}
-    </section>
-    <section className={panel}>
-      <h3 className="font-bold">revision履歴</h3>
-      {error ? <p role="alert">revision履歴を取得できませんでした。</p>
-        : history === null ? <p>読込中…</p>
-          : [...history].sort((a, b) => a.revision - b.revision).map(revision => (
-            <article key={revision.revision} className="space-y-1 border-t border-slate-200 pt-3">
-              <h4 className="font-bold">v{revision.revision} · {actions[revision.action]}</h4>
-              <EntryInfo entry={revision} />
-            </article>
-          ))}
-    </section>
+    <div className="grid items-start gap-4 lg:grid-cols-2">
+      <section className={panel}>
+        <h2 className="text-xl font-bold">取引詳細</h2>
+        <h3 className="font-bold">現在値 · v{entry.revision}</h3>
+        <EntryInfo entry={entry} />
+        {entry.status === 'active' && <div className="flex gap-2">
+          <button className={button} onClick={() => onDraft({ type: entry.type, previous: entry })}>編集</button>
+          <button className={secondary} onClick={() => onDraft({ type: entry.type, previous: entry, voiding: true })}>取消</button>
+        </div>}
+      </section>
+      <section className={panel}>
+        <h3 className="font-bold">revision履歴</h3>
+        {error ? <p role="alert">revision履歴を取得できませんでした。</p>
+          : history === null ? <p>読込中…</p>
+            : [...history].sort((a, b) => a.revision - b.revision).map(revision => (
+              <article key={revision.revision} className="space-y-1 border-t border-slate-200 pt-3">
+                <h4 className="font-bold">v{revision.revision} · {actions[revision.action]}</h4>
+                <EntryInfo entry={revision} />
+              </article>
+            ))}
+      </section>
+    </div>
   </>;
+}
+
+function BalanceChart({ pair, balance, entries, period, today }: {
+  pair: Pair; balance: number; entries: DebtEntry[]; period: Period; today: string;
+}) {
+  const points = graphPoints(entries, pair, period, today);
+  const opening = points[0]?.entry === null ? points[0] : undefined;
+  const chartData = points.map(point => ({
+    tick: point.entry ? point.date : '期首',
+    balance: point.balance,
+    label: point.date + (point.entry ? ' 終値' : ' 期首残高'),
+  }));
+
+  return <article className="min-w-0 space-y-2 rounded-lg border border-slate-200 p-3">
+    <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+      <h3 className="font-bold">{pairName(pair)}</h3>
+      <strong className={balance > 0 ? 'text-blue-700' : 'text-slate-600'}>
+        {balance > 0 ? '現在 ' + yen(balance) : '完済'}
+      </strong>
+    </div>
+    {opening && <p className="text-sm">期首残高：{yen(opening.balance)}</p>}
+    {chartData.length === 0 ? <p className="text-sm">この期間の取引データはありません</p> :
+      <div className="h-56 min-w-0">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={{ width: 280, height: 224 }}>
+          <LineChart data={chartData} margin={{ right: 12, top: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="tick" tickFormatter={date => date === '期首' ? date : date.slice(5)} tick={{ fontSize: 11 }} />
+            <YAxis width={60} tick={{ fontSize: 10 }} allowDecimals={false}
+              tickFormatter={amount => new Intl.NumberFormat('ja-JP', { notation: 'compact' }).format(amount)} />
+            <Tooltip formatter={amount => [yen(Number(amount)), '借金残高']} labelFormatter={(_, items) => items[0]?.payload.label}
+              contentStyle={{ fontSize: 12 }} />
+            <Line dataKey="balance" name="借金残高（円）" stroke="#2563eb" strokeWidth={2} dot={{ r: 4 }} isAnimationActive={false} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>}
+  </article>;
+}
+
+const historyColumns = 'md:grid md:grid-cols-[1fr_0.8fr_1fr_1fr_1.4fr_0.8fr] md:items-center md:gap-3';
+
+function TransactionHistory({ entries, onSelect }: { entries: DebtEntry[]; onSelect: (entryId: string) => void }) {
+  return <section className={panel}>
+    <h2 className="text-xl font-bold">取引履歴</h2>
+    {entries.length === 0 ? <p>取引はありません</p> : <>
+      <div aria-hidden="true" className={historyColumns + ' hidden px-2 text-sm font-bold text-slate-600'}>
+        <span>日付</span><span>種類</span><span>借りている人</span><span>相手</span>
+        <span className="text-right">金額</span><span>状態</span>
+      </div>
+      {[...entries].sort((a, b) => compareEntries(b, a)).map(entry => (
+        <button key={entry.entryId} className={historyColumns + ' block w-full break-words rounded-lg bg-slate-50 p-2 text-left'}
+          onClick={() => onSelect(entry.entryId)}>
+          <span>{entry.transactionDate}</span>{' '}
+          <span>{typeName(entry.type)}</span>{' '}
+          <strong className="md:col-start-5 md:row-start-1 md:text-right">{signedYen(entry)}</strong>
+          <span className="block text-sm md:contents">
+            <span>{people[entry.payerId]}</span><span className="md:hidden"> → </span><span>{people[entry.recipientId]}</span>{' '}
+            {entry.status === 'voided' ? <strong className="text-red-700">取消済み</strong> : <span className="hidden md:inline">有効</span>}
+          </span>
+        </button>
+      ))}
+    </>}
+  </section>;
 }
 
 export function DebtLedgerView({ ledger, actor, seed, today, onExit }: {
@@ -181,7 +245,6 @@ export function DebtLedgerView({ ledger, actor, seed, today, onExit }: {
 }) {
   const [rawEntries, setEntries] = useState<DebtEntry[] | null>(null);
   const [loadError, setLoadError] = useState(false);
-  const [pair, setPair] = useState<Pair | null>(null);
   const [period, setPeriod] = useState<Period>('all');
   const [entryId, setEntryId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft | null>(seed && { type: 'award', seed });
@@ -189,14 +252,8 @@ export function DebtLedgerView({ ledger, actor, seed, today, onExit }: {
 
   const entries = latestEntries(rawEntries ?? []);
   const selectedEntry = entries.find(entry => entry.entryId === entryId);
-  const balances = pairs.map(pair => ({ pair, balance: balanceFor(entries, pair) })).filter(row => row.balance > 0);
-  const chartPair = pair ?? balances[0]?.pair ?? pairs[0];
-  const points = graphPoints(entries, chartPair, period, today);
-  const chartData = points.map(point => ({
-    date: point.date,
-    balance: point.balance,
-    label: point.date + (point.entry ? ' ' + typeName(point.entry.type) : ' 期首残高'),
-  }));
+  const chartPairs = graphPairs(entries);
+  const balances = chartPairs.filter(row => row.balance > 0);
 
   async function save(change: DebtChange) {
     const next = await saveDebtChange(ledger, change, actor, setEntries);
@@ -206,7 +263,6 @@ export function DebtLedgerView({ ledger, actor, seed, today, onExit }: {
       return [...existing.filter(entry => entry.entryId !== next.entryId), next];
     });
     setEntryId(next.entryId);
-    setPair(next);
     setDraft(null);
   }
 
@@ -224,61 +280,41 @@ export function DebtLedgerView({ ledger, actor, seed, today, onExit }: {
               : selectedEntry ? <EntryDetail key={selectedEntry.entryId} ledger={ledger} entry={selectedEntry} sample={rawEntries}
                 onDraft={setDraft} onBack={() => setEntryId(null)} />
                 : <>
-                  <section className={panel}>
-                    <h2 className="text-xl font-bold">現在の借金</h2>
-                    {balances.length === 0 && <p>現在の借金はありません</p>}
-                    {balances.map(({ pair, balance }) => (
-                      <button key={pairName(pair)} className="flex w-full flex-wrap items-center justify-between gap-1 rounded-lg bg-blue-50 p-2 text-left"
-                        onClick={() => setPair(pair)}>
-                        <span>{pairName(pair)}</span><strong>{yen(balance)}</strong>
-                      </button>
-                    ))}
-                    <div className="flex flex-wrap gap-2">
-                      <button className={button} onClick={() => setDraft({ type: 'award' })}>賞金を記録</button>
-                      <button className={button} onClick={() => setDraft({ type: 'payment' })}>支払いを記録</button>
-                    </div>
-                  </section>
-                  <section className={panel}>
-                    <h2 className="text-xl font-bold">借金残高の推移</h2>
-                    <label className="block text-sm">借金の組み合わせ
-                      <select className={field} value={pairName(chartPair)} onChange={event => setPair(pairs.find(pair => pairName(pair) === event.target.value)!)}>
-                        {pairs.map(pair => <option key={pairName(pair)}>{pairName(pair)}</option>)}
-                      </select>
-                    </label>
-                    <div className="grid grid-cols-3 gap-1">
-                      {(Object.keys(periods) as Period[]).map(value => (
-                        <button key={value} className={value === period ? button : secondary} aria-pressed={value === period}
-                          onClick={() => setPeriod(value)}>{periods[value]}</button>
-                      ))}
-                    </div>
-                    {chartData.length === 0 ? <p>この期間の取引データはありません</p> : <>
-                      {points[0].entry === null && <p className="text-sm">期首残高：{yen(points[0].balance)}</p>}
-                      <div className="h-56 min-w-0">
-                        <ResponsiveContainer width="100%" height="100%" minWidth={0} initialDimension={{ width: 280, height: 224 }}>
-                          <LineChart data={chartData} margin={{ right: 12, top: 8 }}>
-                            <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis dataKey="date" tickFormatter={date => String(date).slice(5)} tick={{ fontSize: 11 }} />
-                            <YAxis width={60} tick={{ fontSize: 10 }} allowDecimals={false}
-                              tickFormatter={amount => new Intl.NumberFormat('ja-JP', { notation: 'compact' }).format(amount)} />
-                            <Tooltip formatter={amount => [yen(Number(amount)), '借金残高']} labelFormatter={(_, items) => items[0]?.payload.label}
-                              contentStyle={{ fontSize: 12 }} />
-                            <Line dataKey="balance" name="借金残高（円）" stroke="#2563eb" strokeWidth={2} dot={{ r: 3 }} isAnimationActive={false} />
-                          </LineChart>
-                        </ResponsiveContainer>
+                  <div className="grid items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
+                    <section className={panel}>
+                      <h2 className="text-xl font-bold">現在の借金</h2>
+                      {balances.length === 0 ? <p>現在の借金はありません</p> :
+                        <ul className="space-y-2">
+                          {balances.map(({ pair, balance }) => (
+                            <li key={pairName(pair)} className="flex flex-wrap items-center justify-between gap-1 rounded-lg bg-blue-50 p-2">
+                              <span>{pairName(pair)}</span><strong>{yen(balance)}</strong>
+                            </li>
+                          ))}
+                        </ul>}
+                      <div className="flex flex-wrap gap-2">
+                        <button className={button} onClick={() => setDraft({ type: 'award' })}>賞金を記録</button>
+                        <button className={button} onClick={() => setDraft({ type: 'payment' })}>支払いを記録</button>
                       </div>
-                    </>}
-                  </section>
-                  <section className={panel}>
-                    <h2 className="text-xl font-bold">取引履歴</h2>
-                    {entries.length === 0 && <p>取引はありません</p>}
-                    {[...entries].sort((a, b) => compareEntries(b, a)).map(entry => (
-                      <button key={entry.entryId} className="block w-full break-words rounded-lg bg-slate-50 p-2 text-left"
-                        onClick={() => setEntryId(entry.entryId)}>
-                        <span className="block">{entry.transactionDate}{' '}{typeName(entry.type)}{' '}<strong>{signedYen(entry)}</strong></span>
-                        <span className="block text-sm">{pairName(entry)}{' '}{entry.status === 'voided' && <strong className="text-red-700">取消済み</strong>}</span>
-                      </button>
-                    ))}
-                  </section>
+                    </section>
+                    <section className={panel}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h2 className="text-xl font-bold">借金残高の推移</h2>
+                        <div className="grid grid-cols-3 gap-1" role="group" aria-label="グラフの表示期間">
+                          {(Object.keys(periods) as Period[]).map(value => (
+                            <button key={value} className={value === period ? button : secondary} aria-pressed={value === period}
+                              onClick={() => setPeriod(value)}>{periods[value]}</button>
+                          ))}
+                        </div>
+                      </div>
+                      {chartPairs.length === 0 ? <p>取引データはありません</p> :
+                        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+                          {chartPairs.map(({ pair, balance }) => (
+                            <BalanceChart key={pairName(pair)} pair={pair} balance={balance} entries={entries} period={period} today={today} />
+                          ))}
+                        </div>}
+                    </section>
+                  </div>
+                  <TransactionHistory entries={entries} onSelect={setEntryId} />
                 </>}
       </main>
     </div>

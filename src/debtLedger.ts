@@ -109,8 +109,21 @@ export function timeline(entries: DebtEntry[], pair: Pair) {
 
 export const balanceFor = (entries: DebtEntry[], pair: Pair) => timeline(entries, pair).at(-1)?.balance ?? 0;
 
+export function graphPairs(entries: DebtEntry[]) {
+  return pairs.flatMap(pair => {
+    const closing = timeline(entries, pair).at(-1);
+    return closing ? [{ pair, balance: closing.balance }] : [];
+  }).sort((a, b) => b.balance - a.balance
+    || a.pair.payerId.localeCompare(b.pair.payerId)
+    || a.pair.recipientId.localeCompare(b.pair.recipientId));
+}
+
 export function graphPoints(entries: DebtEntry[], pair: Pair, period: Period, today: string) {
-  const points = timeline(entries, pair);
+  const daily = new Map<string, ReturnType<typeof timeline>[number]>();
+  for (const point of timeline(entries, pair)) {
+    daily.set(point.date, point);
+  }
+  const points = [...daily.values()];
   if (period === 'all') return points;
   const prefix = today.slice(0, period === 'year' ? 4 : 7);
   const start = period === 'year' ? prefix + '-01-01' : prefix + '-01';

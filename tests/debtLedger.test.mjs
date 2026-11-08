@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
-  balanceFor, graphPoints, matchAward, pairs, personIds, prepareRevision, timeline, validPair,
+  balanceFor, graphPairs, graphPoints, matchAward, pairs, personIds, prepareRevision, timeline, validPair,
 } from '../src/debtLedger.ts';
 
 const pair = { payerId: 'father', recipientId: 'yuuka' };
@@ -100,11 +100,38 @@ test('全期間・今年・今月を集計し、期首残高を繰り越す', ()
   entries.push(create(entries, 'a'));
   entries.push(create(entries, 'p', { type: 'payment', amountYen: 500 }));
   const graph = period => graphPoints(entries.toReversed(), pair, period, '2026-11-08');
-  assert.deepEqual(graph('all').map(point => point.balance), [1000, 2000, 3000, 2500]);
-  assert.deepEqual(graph('year').map(point => point.balance), [1000, 2000, 3000, 2500]);
+  assert.deepEqual(graph('all').map(point => point.balance), [1000, 2000, 2500]);
+  assert.deepEqual(graph('year').map(point => point.balance), [1000, 2000, 2500]);
   assert.equal(graph('year')[0].date, '2026-01-01');
-  assert.deepEqual(graph('month').map(point => point.balance), [2000, 3000, 2500]);
+  assert.deepEqual(graph('month').map(point => point.balance), [2000, 2500]);
   assert.deepEqual(graph('month')[0], { date: '2026-11-01', balance: 2000, entry: null });
+});
+
+test('グラフは同日の最後の取引後残高を採用し、翌日を別に表示する', () => {
+  const a = create([], 'a');
+  const b = create([a], 'b', { amountYen: 10000 });
+  const c = create([a, b], 'c', { transactionDate: '2026-11-02', type: 'payment', amountYen: 500 });
+  const graph = entries => graphPoints(entries, pair, 'all', today).map(({ date, balance }) => [date, balance]);
+  assert.deepEqual(graph([a]), [['2026-11-01', 1000]]);
+  assert.deepEqual(graph([b, a]), [['2026-11-01', 11000]]);
+  assert.deepEqual(graph([c, b, a]), [['2026-11-01', 11000], ['2026-11-02', 10500]]);
+});
+
+test('グラフ対象は残高順とID順で並び、完済を含み未取引と取消のみを除く', () => {
+  const a = create([], 'a');
+  const paid = create([a], 'paid', { type: 'payment' });
+  const b = create([], 'b', { ...reverse, amountYen: 3000 });
+  const c = create([], 'c', other);
+  const tied = { ...other, recipientId: pair.payerId };
+  const d = create([], 'd', tied);
+  const cancelled = create([], 'cancelled', { payerId: pair.payerId, recipientId: other.payerId });
+  const voided = voidEntry([cancelled], cancelled);
+  assert.deepEqual(graphPairs([voided, paid, b, c, d, a, cancelled]), [
+    { pair: reverse, balance: 3000 },
+    { pair: tied, balance: 1000 },
+    { pair: other, balance: 1000 },
+    { pair, balance: 0 },
+  ]);
 });
 
 test('同日同時刻はIDで並び、遡及変更・取消後のグラフは最新版で再計算する', () => {

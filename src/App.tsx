@@ -1586,7 +1586,7 @@ export default function App() {
   }
 
   return (
-    <div className="w-full max-w-md mx-auto h-screen bg-slate-100 overflow-hidden shadow-2xl relative select-none font-sans text-slate-800 flex flex-col">
+    <div className={`w-full ${currentView === 'debt' || currentView === 'debt_award' ? 'max-w-7xl' : 'max-w-md'} mx-auto h-screen bg-slate-100 overflow-hidden shadow-2xl relative select-none font-sans text-slate-800 flex flex-col`}>
       {isSampleMode && (
         <div className="bg-amber-500 text-white text-[11px] font-bold py-1 px-4 text-center z-50 flex items-center justify-center gap-1 shrink-0">
           <AlertCircle className="w-3 h-3" /> サンプルモード中（この端末にのみ保存されます）
