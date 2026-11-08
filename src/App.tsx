@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { cancelSounds, ensureAudioReady, getAudioState, playBeep, playFinishSound, playStartSound, setAudioEnabled } from './sound';
+import { claimRoundResult, confirmRound, createBattleState, createMatch, getEffectiveTimeLimit, getHandicapDisplay, parseSavedBattleState } from './battleLogic';
+import type { BattleState, Match, Player, Round, RoundPhase } from './battleLogic';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth';
 import type { User as FirebaseAuthUser } from 'firebase/auth';
@@ -13,67 +15,6 @@ import {
   Clock, Trophy, Award, User, Volume2, VolumeX, Trash2, ArrowRight, RefreshCw, Zap,
   ChevronLeft, Loader2, Undo2, LogOut, Edit2, Minus
 } from 'lucide-react';
-
-// --- Types ---
-type PlayerHandicap = 'none' | 'primary' | 'junior' | 'custom';
-
-interface Player {
-  id: string;
-  name: string;
-  handicap: PlayerHandicap;
-  customScoreOffset?: number | string;
-  customTimeOffset?: number | string; 
-  isActive?: boolean;
-}
-
-interface Round {
-  roundNo: number;
-  questionerId: string;
-  answererId: string;
-  result: 'correct' | 'incorrect' | 'timeout';
-  pointPlayerId: string;
-  elapsedSec: number;
-}
-
-interface Match {
-  id: string;
-  date: string;
-  title: string;
-  category: string;
-  players: {
-    playerAId: string;
-    playerBId: string;
-  };
-  finalScore: {
-    playerA: number;
-    playerB: number;
-  };
-  winnerId: string | null;
-  result: 'playerA_win' | 'playerB_win' | 'draw';
-  questionCount: number;
-  timeLimitSec: number;
-  rounds: Round[];
-  memo: string;
-  createdAt: string;
-  updatedAt: string;
-  handicapSnapshot?: {
-    playerA: string;
-    playerB: string;
-  };
-}
-
-interface BattleState {
-  date: string;
-  title: string;
-  category: string;
-  timeLimitSec: number;
-  players: { playerAId: string; playerBId: string };
-  scores: { playerA: number; playerB: number };
-  rounds: Round[];
-  currentRound: number;
-  questioner: 'A' | 'B';
-  startTime: string;
-}
 
 // --- View Props Interfaces ---
 type View = 'home' | 'setup' | 'battle' | 'result' | 'history' | 'history_detail' | 'stats' | 'settings';
@@ -207,14 +148,6 @@ const DEFAULT_PLAYERS: Player[] = [
   { id: 'p1', name: 'プレイヤー1', handicap: 'none', isActive: true },
   { id: 'p2', name: 'プレイヤー2', handicap: 'primary', isActive: true }
 ];
-
-const getHandicapDisplay = (p: Player | undefined) => {
-  if (!p) return '';
-  if (p.handicap === 'primary') return '小学生(初期+3)';
-  if (p.handicap === 'junior') return '中学生(回答-5秒)';
-  if (p.handicap === 'custom') return `カスタム(+${p.customScoreOffset||0}, ${p.customTimeOffset||0}秒)`;
-  return 'ハンデなし';
-};
 
 // --- Custom UI Components ---
 const ErrorToast = ({ msg, onClose }: { msg: string, onClose: () => void }) => {
@@ -405,22 +338,16 @@ const SetupView = ({ players, setBattleState, setCurrentView, setErrorMsg }: Set
     const pA = players.find((p: Player) => p.id === playerAId);
     const pB = players.find((p: Player) => p.id === playerBId);
     
-    const scoreA = pA?.handicap === 'primary' ? 3 : (pA?.handicap === 'custom' ? (Number(pA?.customScoreOffset) || 0) : 0);
-    const scoreB = pB?.handicap === 'primary' ? 3 : (pB?.handicap === 'custom' ? (Number(pB?.customScoreOffset) || 0) : 0);
-
-    const newBattleState: BattleState = {
+    const newBattleState = createBattleState({
       date,
       title: finalTitle,
       category,
       timeLimitSec: timeLimit,
       players: { playerAId, playerBId },
-      scores: { playerA: scoreA, playerB: scoreB },
-      rounds: [],
-      currentRound: 1,
-      questioner: firstTurn === 'A' ? 'A' : 'B',
+      questioner: firstTurn,
       startTime: new Date().toISOString()
-    };
-    
+    }, pA, pB);
+
     setBattleState(newBattleState);
     localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(newBattleState));
     
@@ -509,8 +436,8 @@ const SetupView = ({ players, setBattleState, setCurrentView, setErrorMsg }: Set
 
 const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCurrentView, saveMatch, setFinishedMatch, setErrorMsg }: BattleProps) => {
   const [isTimerRunning, setIsTimerRunning] = useState(false);
-  const timerPhase = useRef<'idle' | 'running' | 'confirming'>('idle');
-  const [confirmDialog, setConfirmDialog] = useState<{show: boolean, result: 'correct'|'incorrect'|'timeout'|null}>({show: false, result: null});
+  const timerPhase = useRef<RoundPhase>('idle');
+  const [confirmDialog, setConfirmDialog] = useState<{show: boolean, result: Round['result'] | null}>({show: false, result: null});
   const [showFinishConfirm, setShowFinishConfirm] = useState(false);
   const [memoInput, setMemoInput] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -522,12 +449,19 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
   const qPlayer = isQuestionerA ? pA : pB;
   const aPlayer = isQuestionerA ? pB : pA;
 
-  const effectiveTimeLimit = useMemo(() => {
-    let limit = battleState?.timeLimitSec || 30;
-    if (aPlayer?.handicap === 'junior') limit = Math.max(5, limit - 5);
-    else if (aPlayer?.handicap === 'custom') limit = Math.max(5, limit + (Number(aPlayer?.customTimeOffset) || 0));
-    return limit;
-  }, [battleState?.timeLimitSec, aPlayer]);
+  const effectiveTimeLimit = useMemo(
+    () => getEffectiveTimeLimit(battleState?.timeLimitSec, aPlayer),
+    [battleState?.timeLimitSec, aPlayer],
+  );
+
+  const showRoundResult = useCallback((result: Round['result']) => {
+    const claimedPhase = claimRoundResult(timerPhase.current);
+    if (!claimedPhase) return false;
+    timerPhase.current = claimedPhase;
+    setIsTimerRunning(false);
+    setConfirmDialog({show: true, result});
+    return true;
+  }, []);
 
   const [timeLeft, setTimeLeft] = useState(effectiveTimeLimit);
   const round = battleState?.currentRound;
@@ -549,13 +483,11 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
     const timerId = setTimeout(() => {
       if (timerPhase.current !== 'running') return;
       if (timeLeft <= 1) {
-        timerPhase.current = 'confirming';
+        if (!showRoundResult('timeout')) return;
         setTimeLeft(timeLeft - 1);
         if (soundEnabled) {
           void playBeep(220, 0.8, 'sawtooth', 0.8);
         }
-        setIsTimerRunning(false);
-        setConfirmDialog({show: true, result: 'timeout'});
         return;
       }
 
@@ -569,50 +501,18 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
     }, 1000);
 
     return () => clearTimeout(timerId);
-  }, [isTimerRunning, timeLeft, confirmDialog.show, showFinishConfirm, soundEnabled]);
+  }, [isTimerRunning, timeLeft, confirmDialog.show, showFinishConfirm, soundEnabled, showRoundResult]);
 
   if (!battleState) return null;
 
-  const handleResultSelect = (result: 'correct' | 'incorrect') => {
-    if (timerPhase.current !== 'running') return;
-    timerPhase.current = 'confirming';
-    setIsTimerRunning(false);
-    setConfirmDialog({show: true, result});
-  };
-
   const confirmResult = () => {
-    const res = confirmDialog.result;
-    if (!res || timerPhase.current !== 'confirming') return;
-    timerPhase.current = 'idle';
+    const confirmed = confirmRound(
+      timerPhase.current, battleState, confirmDialog.result, pA, pB, effectiveTimeLimit - timeLeft,
+    );
+    if (!confirmed) return;
 
-    const newScores = { ...battleState.scores };
-    let pointPlayerKey: 'playerA' | 'playerB';
-
-    if (res === 'correct') {
-      pointPlayerKey = isQuestionerA ? 'playerB' : 'playerA';
-    } else {
-      pointPlayerKey = isQuestionerA ? 'playerA' : 'playerB';
-    }
-
-    newScores[pointPlayerKey] += 1;
-
-    const newRound: Round = {
-      roundNo: battleState.currentRound,
-      questionerId: qPlayer?.id || '',
-      answererId: aPlayer?.id || '',
-      result: res,
-      pointPlayerId: pointPlayerKey === 'playerA' ? (pA?.id || '') : (pB?.id || ''),
-      elapsedSec: effectiveTimeLimit - timeLeft
-    };
-
-    const newState: BattleState = {
-      ...battleState,
-      scores: newScores,
-      rounds: [...battleState.rounds, newRound],
-      currentRound: battleState.currentRound + 1,
-      questioner: isQuestionerA ? 'B' : 'A'
-    };
-
+    timerPhase.current = confirmed.phase;
+    const newState = confirmed.battleState;
     setBattleState(newState);
     localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(newState));
     setConfirmDialog({show: false, result: null});
@@ -655,39 +555,11 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
 
   const executeFinish = async (event: React.MouseEvent<HTMLButtonElement>) => {
     setIsSaving(true);
-    const finalA = battleState.scores.playerA;
-    const finalB = battleState.scores.playerB;
-    let winnerId = null;
-    let resultStr: "playerA_win" | "playerB_win" | "draw" = "draw";
-
-    if (finalA > finalB) {
-      winnerId = pA?.id || null;
-      resultStr = 'playerA_win';
-    } else if (finalB > finalA) {
-      winnerId = pB?.id || null;
-      resultStr = 'playerB_win';
-    }
-
-    const matchData: Match = {
+    const matchData = createMatch(battleState, pA, pB, memoInput, {
       id: 'match_' + Date.now().toString(),
-      date: battleState.date,
-      title: battleState.title,
-      category: battleState.category,
-      players: battleState.players,
-      finalScore: battleState.scores,
-      winnerId,
-      result: resultStr,
-      questionCount: battleState.currentRound - 1,
-      timeLimitSec: battleState.timeLimitSec,
-      rounds: battleState.rounds,
-      memo: memoInput.trim(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      handicapSnapshot: {
-        playerA: getHandicapDisplay(pA),
-        playerB: getHandicapDisplay(pB)
-      }
-    };
+    });
 
     if (soundEnabled) {
       void playFinishSound(event.nativeEvent);
@@ -778,7 +650,7 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
         <div className="flex gap-3 mb-4">
            <button 
              disabled={!isTimerRunning}
-             onClick={() => handleResultSelect('incorrect')}
+             onClick={() => showRoundResult('incorrect')}
              className={`flex-1 py-6 rounded-2xl font-black text-2xl flex flex-col items-center gap-2 transition-all ${isTimerRunning ? 'bg-red-500 text-white shadow-[0_6px_0_#991b1b] active:translate-y-2 active:shadow-none' : 'bg-slate-200 text-slate-400'}`}
            >
              <X className="w-10 h-10 stroke-[3]" />
@@ -786,7 +658,7 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
            </button>
            <button 
              disabled={!isTimerRunning}
-             onClick={() => handleResultSelect('correct')}
+             onClick={() => showRoundResult('correct')}
              className={`flex-1 py-6 rounded-2xl font-black text-2xl flex flex-col items-center gap-2 transition-all ${isTimerRunning ? 'bg-emerald-500 text-white shadow-[0_6px_0_#065f46] active:translate-y-2 active:shadow-none' : 'bg-slate-200 text-slate-400'}`}
            >
              <Check className="w-10 h-10 stroke-[3]" />
@@ -1765,15 +1637,9 @@ export default function App() {
   const [matches, setMatches] = useState<Match[]>([]);
   const cloudRequestId = useRef(0);
   
-  const [savedBattleState, setBattleState] = useState<BattleState | null | undefined>(() => {
-    const savedState = localStorage.getItem(STORAGE_KEY_STATE);
-    if (!savedState) return null;
-    try {
-      return JSON.parse(savedState);
-    } catch {
-      return undefined;
-    }
-  });
+  const [savedBattleState, setBattleState] = useState(
+    () => parseSavedBattleState(localStorage.getItem(STORAGE_KEY_STATE)),
+  );
   const battleState = savedBattleState ?? null;
   const hasInvalidBattleState = savedBattleState === undefined;
   const [finishedMatch, setFinishedMatch] = useState<Match | null>(null);
