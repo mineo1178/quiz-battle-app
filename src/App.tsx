@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { cancelSounds, ensureAudioReady, getAudioState, playBeep, playFinishSound, playStartSound, setAudioEnabled } from './sound';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth';
 import type { User as FirebaseAuthUser } from 'firebase/auth';
@@ -117,13 +118,22 @@ const getLocalDateString = () => {
   return new Date(today.getTime() - offset).toISOString().slice(0, 10);
 };
 
-type AudioTestResult = '未実行' | '再生成功' | '解除失敗' | '効果音OFF';
+type AudioTestResult = '未実行' | Awaited<ReturnType<typeof playStartSound>>;
+
+const readSoundPreference = () => {
+  try {
+    return localStorage.getItem(STORAGE_KEY_SOUND_ENABLED);
+  } catch {
+    return null;
+  }
+};
 
 interface DeviceDiagnostics {
   device: 'iOS' | 'Android' | 'その他';
   launchMode: 'ブラウザ' | 'ホーム画面 / standalone';
-  audioState: AudioContextState | '未作成';
+  audioState: ReturnType<typeof getAudioState>;
   visibilityState: DocumentVisibilityState;
+  hasFocus: boolean;
   soundStorageValue: string | null;
   localDate: string;
   lastAudioTest: AudioTestResult;
@@ -133,86 +143,6 @@ interface DeviceDiagnostics {
 // --- Functions ---
 const getMatchesRef = () => collection(db, 'families', FAMILY_ID, 'apps', 'quiz-battle', 'matches');
 const getPlayersRef = () => collection(db, 'families', FAMILY_ID, 'apps', 'quiz-battle', 'players');
-
-// --- Audio System (iOS / PWA Support) ---
-let sharedAudioCtx: AudioContext | null = null;
-
-const getAudioContext = (): AudioContext | null => {
-  try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
-    if (!AudioContextClass) return null;
-
-    if (!sharedAudioCtx) {
-      sharedAudioCtx = new AudioContextClass();
-    }
-    return sharedAudioCtx;
-  } catch (e) {
-    console.error("AudioContext init error:", e);
-    return null;
-  }
-};
-
-const unlockAudio = async (): Promise<boolean> => {
-  const ctx = getAudioContext();
-  if (!ctx) return false;
-
-  try {
-    if (ctx.state === "suspended") {
-      await ctx.resume();
-    }
-    if (ctx.state !== 'running') return false;
-    const oscillator = ctx.createOscillator();
-    const gainNode = ctx.createGain();
-    oscillator.frequency.value = 1;
-    gainNode.gain.value = 0.00001;
-    oscillator.connect(gainNode);
-    gainNode.connect(ctx.destination);
-    oscillator.start();
-    oscillator.stop(ctx.currentTime + 0.01);
-    return true;
-  } catch (e) {
-    console.error("Audio unlock error:", e);
-    return false;
-  }
-};
-
-const playBeep = async (freq: number, duration: number, type: OscillatorType = "sine", volume: number = 0.5) => {
-  const ctx = getAudioContext();
-  if (!ctx) return;
-
-  try {
-    if (ctx.state === "suspended") {
-      await ctx.resume();
-    }
-    if (ctx.state !== 'running') return;
-    const oscillator = ctx.createOscillator();
-    const gainNode = ctx.createGain();
-    
-    oscillator.type = type;
-    oscillator.frequency.value = freq;
-    
-    gainNode.gain.setValueAtTime(0, ctx.currentTime);
-    gainNode.gain.linearRampToValueAtTime(volume, ctx.currentTime + 0.01);
-    gainNode.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime + duration);
-    
-    oscillator.connect(gainNode);
-    gainNode.connect(ctx.destination);
-    
-    oscillator.start(ctx.currentTime);
-    oscillator.stop(ctx.currentTime + duration);
-  } catch (e) {
-    console.error("Audio play error:", e);
-  }
-};
-
-const playStartSound = async (isUnlocked = false): Promise<boolean> => {
-  if (!isUnlocked && !await unlockAudio()) return false;
-  void playBeep(523.25, 0.1, 'sine', 0.6);
-  window.setTimeout(() => void playBeep(659.25, 0.1, 'sine', 0.6), 100);
-  window.setTimeout(() => void playBeep(783.99, 0.1, 'sine', 0.6), 200);
-  window.setTimeout(() => void playBeep(1046.5, 0.3, 'sine', 0.6), 300);
-  return true;
-};
 
 const getDeviceDiagnostics = (lastAudioTest: AudioTestResult): DeviceDiagnostics => {
   const userAgent = navigator.userAgent;
@@ -224,9 +154,10 @@ const getDeviceDiagnostics = (lastAudioTest: AudioTestResult): DeviceDiagnostics
   return {
     device,
     launchMode: isStandalone ? 'ホーム画面 / standalone' : 'ブラウザ',
-    audioState: sharedAudioCtx?.state ?? '未作成',
+    audioState: getAudioState(),
     visibilityState: document.visibilityState,
-    soundStorageValue: localStorage.getItem(STORAGE_KEY_SOUND_ENABLED),
+    hasFocus: document.hasFocus(),
+    soundStorageValue: readSoundPreference(),
     localDate: getLocalDateString(),
     lastAudioTest,
     userAgent,
@@ -412,7 +343,7 @@ const HomeView = ({ battleState, setBattleState, setCurrentView, isSampleMode, s
   );
 };
 
-const SetupView = ({ players, setBattleState, soundEnabled, setCurrentView, setErrorMsg }: any) => {
+const SetupView = ({ players, setBattleState, setCurrentView, setErrorMsg }: any) => {
   const [date, setDate] = useState(getLocalDateString);
   const [category, setCategory] = useState(CATEGORIES[0]);
   const [title, setTitle] = useState('');
@@ -453,10 +384,6 @@ const SetupView = ({ players, setBattleState, soundEnabled, setCurrentView, setE
     
     setBattleState(newBattleState);
     localStorage.setItem(STORAGE_KEY_STATE, JSON.stringify(newBattleState));
-    
-    if (soundEnabled) {
-      void unlockAudio();
-    }
     
     setCurrentView('battle');
   };
@@ -671,7 +598,7 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
     setShowFinishConfirm(true);
   };
 
-  const executeFinish = async () => {
+  const executeFinish = async (event: React.MouseEvent<HTMLButtonElement>) => {
     setIsSaving(true);
     const finalA = battleState.scores.playerA;
     const finalB = battleState.scores.playerB;
@@ -708,9 +635,7 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
     };
 
     if (soundEnabled) {
-      await unlockAudio();
-      void playBeep(600, 1.5, "sine", 1.0);
-      window.setTimeout(() => void playBeep(600, 2.0, "sine", 1.0), 800);
+      void playFinishSound(event.nativeEvent);
     }
 
     const success = await saveMatch(matchData);
@@ -773,10 +698,9 @@ const BattleView = ({ players, battleState, setBattleState, soundEnabled, setCur
 
         {!isTimerRunning && timeLeft === effectiveTimeLimit && !confirmDialog.show && (
           <button 
-            onPointerDown={() => { if (soundEnabled) void unlockAudio(); }}
-            onClick={async () => {
+            onClick={event => {
               if (soundEnabled) {
-                await playStartSound();
+                void playStartSound(event.nativeEvent);
               }
               setIsTimerRunning(true);
             }}
@@ -1441,9 +1365,13 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
   const [editingPlayers, setEditingPlayers] = useState<Player[]>(JSON.parse(JSON.stringify(players)));
   const [isSaving, setIsSaving] = useState(false);
   const [deviceDiagnostics, setDeviceDiagnostics] = useState<DeviceDiagnostics>(() => getDeviceDiagnostics('未実行'));
+  const [audioTestResult, setAudioTestResult] = useState<AudioTestResult>('未実行');
+  const [isTestingAudio, setIsTestingAudio] = useState(false);
 
   const refreshDeviceDiagnostics = useCallback((lastAudioTest?: AudioTestResult) => {
-    setDeviceDiagnostics(previous => getDeviceDiagnostics(lastAudioTest ?? previous.lastAudioTest));
+    if (isDeviceTestMode) {
+      setDeviceDiagnostics(previous => getDeviceDiagnostics(lastAudioTest ?? previous.lastAudioTest));
+    }
   }, []);
 
   useEffect(() => {
@@ -1452,9 +1380,13 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
     const handleEnvironmentChange = () => refreshDeviceDiagnostics();
     document.addEventListener('visibilitychange', handleEnvironmentChange);
     window.addEventListener('focus', handleEnvironmentChange);
+    window.addEventListener('blur', handleEnvironmentChange);
+    window.addEventListener('pageshow', handleEnvironmentChange);
     return () => {
       document.removeEventListener('visibilitychange', handleEnvironmentChange);
       window.removeEventListener('focus', handleEnvironmentChange);
+      window.removeEventListener('blur', handleEnvironmentChange);
+      window.removeEventListener('pageshow', handleEnvironmentChange);
     };
   }, [refreshDeviceDiagnostics]);
 
@@ -1513,15 +1445,12 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
     }
   };
 
-  const handleDeviceAudioTest = async () => {
-    if (!soundEnabled) {
-      refreshDeviceDiagnostics('効果音OFF');
-      return;
-    }
-
-    const isUnlocked = await unlockAudio();
-    const result = isUnlocked && await playStartSound(true) ? '再生成功' : '解除失敗';
+  const handleAudioTest = async (event: React.MouseEvent<HTMLButtonElement>) => {
+    setIsTestingAudio(true);
+    const result = await playStartSound(event.nativeEvent);
+    setAudioTestResult(result);
     refreshDeviceDiagnostics(result);
+    setIsTestingAudio(false);
   };
 
   return (
@@ -1667,45 +1596,58 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
                 {soundEnabled ? <Volume2 className="w-5 h-5 text-slate-500"/> : <VolumeX className="w-5 h-5 text-slate-400"/>}
                 <span className="font-bold text-slate-700">効果音</span>
               </div>
-              <button 
-                onPointerDown={() => { if (soundEnabled) void unlockAudio(); }}
-                onClick={() => {
+              <button
+                type="button"
+                role="switch"
+                aria-label="効果音"
+                aria-checked={soundEnabled}
+                onClick={event => {
                   const nextEnabled = !soundEnabled;
+                  setAudioEnabled(nextEnabled);
                   setSoundEnabled(nextEnabled);
-                  if (nextEnabled) void unlockAudio();
+                  setAudioTestResult('未実行');
+                  if (nextEnabled) {
+                    void ensureAudioReady(event.nativeEvent).then(() => refreshDeviceDiagnostics());
+                  }
                   if (isDeviceTestMode) window.setTimeout(() => refreshDeviceDiagnostics(), 0);
                 }}
-                className={`w-14 h-8 rounded-full relative transition-colors ${soundEnabled ? 'bg-blue-500' : 'bg-slate-300'}`}
+                className="flex min-h-11 shrink-0 items-center gap-2 px-1 text-sm font-bold text-slate-700"
               >
-                <div className={`absolute top-1 w-6 h-6 rounded-full bg-white transition-transform ${soundEnabled ? 'left-7' : 'left-1'}`} />
+                {soundEnabled ? 'ON' : 'OFF'}
+                <span aria-hidden="true" className={`w-14 h-8 rounded-full relative transition-colors ${soundEnabled ? 'bg-blue-500' : 'bg-slate-300'}`}>
+                  <span className={`absolute top-1 w-6 h-6 rounded-full bg-white transition-transform ${soundEnabled ? 'left-7' : 'left-1'}`} />
+                </span>
               </button>
            </div>
            {soundEnabled && (
              <button
                type="button"
-               onPointerDown={() => void unlockAudio()}
-               onClick={() => void playStartSound()}
-               className="mt-4 w-full rounded-xl bg-blue-50 p-3 text-sm font-bold text-blue-700 transition-colors hover:bg-blue-100 active:scale-[0.98]"
+               disabled={isTestingAudio}
+               onClick={handleAudioTest}
+               className="mt-4 min-h-11 w-full rounded-xl bg-blue-50 p-3 text-sm font-bold text-blue-700 transition-colors hover:bg-blue-100 active:scale-[0.98]"
              >
                効果音を試聴する
              </button>
            )}
+           <p role="status" className="mt-2 text-sm text-slate-700 empty:hidden">
+             {isTestingAudio ? '音声を準備中…' : soundEnabled && audioTestResult !== '未実行' ? audioTestResult : ''}
+           </p>
 
            {isDeviceTestMode && (
              <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50 p-4 text-sm text-slate-700">
                <h4 className="mb-3 font-black text-violet-800">実機確認モード</h4>
-               <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 break-words">
+               <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-2 break-words">
                  <dt className="font-bold text-slate-500">端末</dt><dd>{deviceDiagnostics.device}</dd>
                  <dt className="font-bold text-slate-500">起動方法</dt><dd>{deviceDiagnostics.launchMode}</dd>
                  <dt className="font-bold text-slate-500">AudioContext</dt><dd>{deviceDiagnostics.audioState}</dd>
-                 <dt className="font-bold text-slate-500">表示状態</dt><dd>{deviceDiagnostics.visibilityState}</dd>
+                 <dt className="font-bold text-slate-500">表示状態</dt><dd>{deviceDiagnostics.visibilityState} / {deviceDiagnostics.hasFocus ? 'フォーカスあり' : 'フォーカスなし'}</dd>
                  <dt className="font-bold text-slate-500">効果音設定</dt><dd>{soundEnabled ? 'ON' : 'OFF'}</dd>
                  <dt className="font-bold text-slate-500">保存値</dt><dd>{deviceDiagnostics.soundStorageValue ?? '未保存'}</dd>
                  <dt className="font-bold text-slate-500">ローカル日付</dt><dd>{deviceDiagnostics.localDate}</dd>
                  <dt className="font-bold text-slate-500">最終音声テスト</dt><dd>{deviceDiagnostics.lastAudioTest}</dd>
                </dl>
                <p className="mt-3 break-all text-[10px] leading-relaxed text-slate-500">UA: {deviceDiagnostics.userAgent}</p>
-               <div className="mt-4 grid grid-cols-2 gap-2">
+               <div className="mt-4 grid gap-2 sm:grid-cols-2">
                  <button
                    type="button"
                    onClick={() => refreshDeviceDiagnostics()}
@@ -1715,10 +1657,11 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
                  </button>
                  <button
                    type="button"
-                   onClick={() => void handleDeviceAudioTest()}
+                   disabled={isTestingAudio}
+                   onClick={handleAudioTest}
                    className="rounded-lg bg-violet-600 px-3 py-2 font-bold text-white shadow-sm active:scale-[0.98]"
                  >
-                   AudioContext解除＋開始音テスト
+                   開始音テスト
                  </button>
                </div>
              </div>
@@ -1759,7 +1702,7 @@ const SettingsView = ({ players, savePlayers, setCurrentView, isSampleMode, setI
 export default function App() {
   const [user, setUser] = useState<FirebaseAuthUser | null>(null);
   const [isSampleMode, setIsSampleMode] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(() => localStorage.getItem(STORAGE_KEY_SOUND_ENABLED) !== 'false');
+  const [soundEnabled, setSoundEnabled] = useState(() => readSoundPreference() !== 'false');
   
   const [currentView, setCurrentView] = useState<'home' | 'setup' | 'battle' | 'result' | 'history' | 'history_detail' | 'stats' | 'settings'>('home');
   
@@ -1877,8 +1820,30 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY_SOUND_ENABLED, String(soundEnabled));
+    try {
+      localStorage.setItem(STORAGE_KEY_SOUND_ENABLED, String(soundEnabled));
+    } catch {
+      // The setting still applies for the current session.
+    }
+    setAudioEnabled(soundEnabled);
   }, [soundEnabled]);
+
+  useEffect(() => {
+    const handleClick = (event: MouseEvent) => { void ensureAudioReady(event); };
+    const handleVisibility = () => {
+      if (document.hidden) cancelSounds();
+    };
+
+    document.addEventListener('click', handleClick);
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('pagehide', cancelSounds);
+    return () => {
+      document.removeEventListener('click', handleClick);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('pagehide', cancelSounds);
+      setAudioEnabled(false);
+    };
+  }, []);
 
   const saveMatch = async (matchData: Match): Promise<boolean> => {
     if (isSampleMode) {
@@ -2014,7 +1979,6 @@ export default function App() {
           <SetupView 
             players={players} 
             setBattleState={setBattleState} 
-            soundEnabled={soundEnabled} 
             setCurrentView={setCurrentView}
             setErrorMsg={setAppError} 
           />
