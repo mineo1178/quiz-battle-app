@@ -98,7 +98,7 @@ function EntryForm({ draft, entries, today, onSave, onBack }: {
             <input className={field} type="number" inputMode="numeric" min="1" step="1" required value={amount} onChange={event => setAmount(event.target.value)} />
           </label>
           <label className="block">取引日
-            <input className={field} type="date" required value={date} onChange={event => setDate(event.target.value)} />
+            <input className={field} type="date" max={today} required value={date} onChange={event => setDate(event.target.value)} />
           </label>
           <label className="block">メモ
             <textarea className={field} value={memo} onChange={event => setMemo(event.target.value)} />

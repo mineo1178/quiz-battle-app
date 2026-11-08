@@ -1,8 +1,9 @@
+import { FirebaseError } from 'firebase/app';
 import {
-  collection, doc, getDocsFromServer, onSnapshot, runTransaction,
+  collection, doc, getDocFromServer, getDocsFromServer, onSnapshot, runTransaction,
 } from 'firebase/firestore';
 import type { CollectionReference, DocumentData, FirestoreError } from 'firebase/firestore';
-import { prepareRevision } from './debtLedger';
+import { prepareRevision } from './debtLedger.ts';
 import type { DebtChange, DebtEntry } from './debtLedger';
 
 const sampleKey = 'quiz_debt_ledger_sample_v1';
@@ -58,19 +59,29 @@ export async function saveDebtChange(
   const app = ref.parent;
   if (!app) throw new Error('Ledger must belong to an app');
   const guard = doc(app, 'debtLedgerState', 'writeVersion');
-  return runTransaction(ref.firestore, async transaction => {
-    // Read the version before the server query. Every ledger writer advances it
-    // in the same commit, so an intervening write forces a retry of validation.
-    const version = await transaction.get(guard);
-    const snapshot = await getDocsFromServer(ref);
-    const entries = snapshot.docs.map(entry => entry.data() as DebtEntry);
-    const next = prepareRevision(entries, target.id, change, Date.now(), actor);
-    const revisionRef = doc(collection(target, 'revisions'), String(next.revision));
-    const revision = await transaction.get(revisionRef);
-    if (revision.exists()) throw new Error('Revision already exists');
-    transaction.set(guard, { version: (version.data()?.version ?? 0) + 1 });
-    transaction.set(target, next);
-    transaction.set(revisionRef, next);
-    return next;
-  });
+  for (let retries = 0; ; retries++) {
+    let observedVersion = 0;
+    try {
+      return await runTransaction(ref.firestore, async transaction => {
+        // Read the guard before the server query so an intervening write invalidates validation.
+        const version = await transaction.get(guard);
+        observedVersion = version.data()?.version ?? 0;
+        const snapshot = await getDocsFromServer(ref);
+        const entries = snapshot.docs.map(entry => entry.data() as DebtEntry);
+        const next = prepareRevision(entries, target.id, change, Date.now(), actor);
+        const revisionRef = doc(collection(target, 'revisions'), String(next.revision));
+        const revision = await transaction.get(revisionRef);
+        if (revision.exists()) throw new Error('Revision already exists');
+        transaction.set(guard, { version: observedVersion + 1 });
+        transaction.set(target, next);
+        transaction.set(revisionRef, next);
+        return next;
+      });
+    } catch (error) {
+      // Rules can reject a stale +1 before Firestore checks the transaction precondition.
+      if (retries >= 4 || !(error instanceof FirebaseError) || error.code !== 'permission-denied') throw error;
+      const current = await getDocFromServer(guard).catch(() => null);
+      if (!current || (current.data()?.version ?? 0) <= observedVersion) throw error;
+    }
+  }
 }

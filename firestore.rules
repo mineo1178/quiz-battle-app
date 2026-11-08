@@ -1,0 +1,117 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    match /families/{familyId}/{document=**} {
+      allow read: if signedIn();
+    }
+
+    // Preserve the existing write grant outside the protected ledger documents.
+    match /families/{familyId} {
+      allow write: if signedIn();
+    }
+    match /families/{familyId}/{collectionId}/{documentId}/{descendant=**} {
+      allow write: if signedIn() && (collectionId != 'apps' || documentId != 'quiz-battle');
+    }
+    match /families/{familyId}/apps/quiz-battle {
+      allow write: if signedIn();
+      match /{collectionId}/{documentId}/{descendant=**} {
+        allow write: if signedIn() && collectionId != 'debtEntries'
+          && (collectionId != 'debtLedgerState' || documentId != 'writeVersion');
+      }
+      match /debtLedgerState/writeVersion/{collectionId}/{documentId}/{descendant=**} {
+        allow write: if signedIn();
+      }
+      match /debtEntries/{entryId}/{collectionId}/{documentId}/{descendant=**} {
+        allow write: if signedIn() && collectionId != 'revisions';
+      }
+      match /debtEntries/{entryId}/revisions/{revisionId}/{collectionId}/{documentId}/{descendant=**} {
+        allow write: if signedIn();
+      }
+    }
+
+    function validEntry(entry, entryId) {
+      let fields = [
+        'entryId', 'revision', 'previousRevision', 'status', 'action', 'type', 'payerId',
+        'recipientId', 'amountYen', 'transactionDate', 'memo', 'matchSnapshot',
+        'changeReason', 'registeredAt', 'createdAt', 'createdBy'
+      ];
+      let people = ['father', 'mother', 'taichi', 'yuuka'];
+      return entry.keys().hasOnly(fields) && entry.keys().hasAll(fields)
+        && entry.entryId == entryId && entry.revision is int
+        && entry.type in ['award', 'payment']
+        && entry.payerId in people && entry.recipientId in people && entry.payerId != entry.recipientId
+        && entry.amountYen is int && entry.amountYen >= 1 && entry.amountYen <= 9007199254740991
+        && entry.transactionDate is string && entry.transactionDate.matches('[0-9]{4}-[0-9]{2}-[0-9]{2}')
+        && entry.memo is string && (entry.matchSnapshot == null || entry.matchSnapshot is map)
+        && entry.changeReason is string && entry.registeredAt is int && entry.createdAt is int
+        && entry.createdBy == request.auth.uid;
+    }
+
+    function nextVersion(path, version) {
+      return exists(path) ? version == get(path).data.version + 1 : version == 1;
+    }
+
+    match /families/{familyId}/apps/quiz-battle {
+      function guardAdvanced() {
+        let guard = /databases/$(database)/documents/families/$(familyId)/apps/quiz-battle/debtLedgerState/writeVersion;
+        return nextVersion(guard, getAfter(guard).data.version);
+      }
+
+      match /debtLedgerState/writeVersion {
+        // Keep the version-only protocol used by existing clients.
+        allow create, update: if signedIn()
+          && request.resource.data.keys().hasOnly(['version'])
+          && request.resource.data.version is int
+          && nextVersion(/databases/$(database)/documents/families/$(familyId)/apps/quiz-battle/debtLedgerState/writeVersion,
+            request.resource.data.version);
+      }
+
+      match /debtEntries/{entryId} {
+        function hasNewRevision(entry) {
+          let revisionId = string(entry.revision);
+          let revision = /databases/$(database)/documents/families/$(familyId)/apps/quiz-battle/debtEntries/$(entryId)/revisions/$(revisionId);
+          return !exists(revision) && getAfter(revision).data == entry;
+        }
+
+        function validUpdate(entry, previous) {
+          return previous.status == 'active'
+            && entry.revision == previous.revision + 1 && entry.previousRevision == previous.revision
+            && entry.registeredAt == previous.registeredAt && entry.createdAt > previous.createdAt
+            && entry.type == previous.type && entry.matchSnapshot == previous.matchSnapshot
+            && entry.changeReason.trim().size() > 0
+            && ((entry.action == 'update' && entry.status == 'active')
+              || (entry.action == 'void' && entry.status == 'voided'
+                && entry.diff(previous).affectedKeys().hasOnly([
+                  'revision', 'previousRevision', 'action', 'status', 'changeReason', 'createdAt', 'createdBy'
+                ])));
+        }
+
+        allow create: if signedIn() && validEntry(request.resource.data, entryId)
+          && request.resource.data.revision == 1 && request.resource.data.previousRevision == null
+          && request.resource.data.action == 'create' && request.resource.data.status == 'active'
+          && request.resource.data.changeReason == ''
+          && hasNewRevision(request.resource.data) && guardAdvanced();
+        allow update: if signedIn() && validEntry(request.resource.data, entryId)
+          && validUpdate(request.resource.data, resource.data)
+          && hasNewRevision(request.resource.data) && guardAdvanced();
+
+        match /revisions/{revisionId} {
+          function currentWritten(entry) {
+            let current = /databases/$(database)/documents/families/$(familyId)/apps/quiz-battle/debtEntries/$(entryId);
+            return getAfter(current).data == entry
+              && (!exists(current) || get(current).data.revision != entry.revision);
+          }
+
+          allow create: if signedIn() && request.resource.data.entryId == entryId
+            && string(request.resource.data.revision) == revisionId
+            && currentWritten(request.resource.data);
+        }
+      }
+    }
+  }
+}

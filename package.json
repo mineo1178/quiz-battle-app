@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "test": "node --test",
+    "test:emulator": "firebase emulators:exec --only firestore --project demo-quiz-battle-ledger \"node --test tests/debtLedger.emulator.mjs\"",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"

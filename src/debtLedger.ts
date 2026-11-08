@@ -122,6 +122,7 @@ export function graphPoints(entries: DebtEntry[], pair: Pair, period: Period, to
 
 export function prepareRevision(
   entries: DebtEntry[], entryId: string, change: DebtChange, now: number, actor: string,
+  today = new Date(now - new Date(now).getTimezoneOffset() * 60_000).toISOString().slice(0, 10),
 ): DebtEntry {
   const latest = latestEntries(entries);
   const previous = latest.find(entry => entry.entryId === entryId);
@@ -138,6 +139,9 @@ export function prepareRevision(
   if (!/^\d{4}-\d{2}-\d{2}$/.test(transactionDate) || Number.isNaN(date.getTime())
     || date.toISOString().slice(0, 10) !== transactionDate) {
     throw new DebtError('有効な取引日を入力してください。');
+  }
+  if (change.action !== 'void' && transactionDate > today) {
+    throw new DebtError('未来の取引日は登録できません。');
   }
   const changeReason = change.action === 'create' ? '' : change.reason.trim();
   if (change.action !== 'create' && !changeReason) throw new DebtError('理由を入力してください。');

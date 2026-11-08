@@ -7,15 +7,16 @@ import {
 const pair = { payerId: 'father', recipientId: 'yuuka' };
 const reverse = { payerId: 'yuuka', recipientId: 'father' };
 const other = { payerId: 'mother', recipientId: 'yuuka' };
+const today = '2026-11-08';
 const fields = (overrides = {}) => ({
   ...pair, type: 'award', amountYen: 1000, transactionDate: '2026-11-01', memo: '', matchSnapshot: null, ...overrides,
 });
 const create = (entries, entryId, overrides, now = 10) =>
-  prepareRevision(entries, entryId, { action: 'create', fields: fields(overrides) }, now, 'tester');
+  prepareRevision(entries, entryId, { action: 'create', fields: fields(overrides) }, now, 'tester', today);
 const edit = (entries, previous, overrides, reason = '訂正') =>
-  prepareRevision(entries, previous.entryId, { action: 'update', previous, fields: { ...previous, ...overrides }, reason }, 20, 'tester');
+  prepareRevision(entries, previous.entryId, { action: 'update', previous, fields: { ...previous, ...overrides }, reason }, 20, 'tester', today);
 const voidEntry = (entries, previous, reason = '取消理由') =>
-  prepareRevision(entries, previous.entryId, { action: 'void', previous, reason }, 30, 'tester');
+  prepareRevision(entries, previous.entryId, { action: 'void', previous, reason }, 30, 'tester', today);
 
 test('固定4人の12方向を有効とし、同一人物や未知のIDを拒否する', () => {
   assert.equal(pairs.length, 12);
@@ -47,6 +48,19 @@ test('複数の賞金と支払いを累積し、完済や逆方向を独立し�
   assert.equal(balanceFor(entries, pair), 0);
   assert.equal(balanceFor(entries, reverse), 300);
   assert.deepEqual(timeline(entries, pair).map(point => point.balance), [1000, 3000, 2500, 0]);
+});
+
+test('今日と昨日を許可し、賞金・支払いの未来日登録と未来日への編集を拒否する', () => {
+  const award = create([], 'today', { transactionDate: today });
+  assert.equal(award.transactionDate, today);
+  assert.equal(create([], 'yesterday', { transactionDate: '2026-11-07' }).transactionDate, '2026-11-07');
+  for (const type of ['award', 'payment']) {
+    assert.throws(() => create([award], 'tomorrow', { type, transactionDate: '2026-11-09' }), /未来/);
+  }
+  const payment = create([award], 'payment', { type: 'payment', amountYen: 1, transactionDate: today });
+  for (const entry of [award, payment]) {
+    assert.throws(() => edit([award, payment], entry, { transactionDate: '2026-11-09' }), /未来/);
+  }
 });
 
 test('遡及支払いや旧・新ペアを含め、途中で残高が負になる変更・取消を拒否する', () => {
@@ -85,10 +99,9 @@ test('全期間・今年・今月を集計し、期首残高を繰り越す', ()
   entries.push(create(entries, 'priorMonth', { transactionDate: '2026-10-31' }));
   entries.push(create(entries, 'a'));
   entries.push(create(entries, 'p', { type: 'payment', amountYen: 500 }));
-  entries.push(create(entries, 'later', { transactionDate: '2026-12-01' }));
   const graph = period => graphPoints(entries.toReversed(), pair, period, '2026-11-08');
-  assert.deepEqual(graph('all').map(point => point.balance), [1000, 2000, 3000, 2500, 3500]);
-  assert.deepEqual(graph('year').map(point => point.balance), [1000, 2000, 3000, 2500, 3500]);
+  assert.deepEqual(graph('all').map(point => point.balance), [1000, 2000, 3000, 2500]);
+  assert.deepEqual(graph('year').map(point => point.balance), [1000, 2000, 3000, 2500]);
   assert.equal(graph('year')[0].date, '2026-01-01');
   assert.deepEqual(graph('month').map(point => point.balance), [2000, 3000, 2500]);
   assert.deepEqual(graph('month')[0], { date: '2026-11-01', balance: 2000, entry: null });
