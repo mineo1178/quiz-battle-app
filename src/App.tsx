@@ -3,6 +3,8 @@ import { cancelSounds, ensureAudioReady, getAudioState, playStartSound, setAudio
 import { createBattleState, getHandicapDisplay, parseSavedBattleState } from './battleLogic';
 import type { BattleState, Match, Player, Round } from './battleLogic';
 import { BattleView } from './BattleView';
+import { DebtLedgerView } from './DebtLedgerView';
+import { matchAward } from './debtLedger';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signInWithEmailAndPassword } from 'firebase/auth';
 import type { User as FirebaseAuthUser } from 'firebase/auth';
@@ -18,7 +20,7 @@ import {
 } from 'lucide-react';
 
 // --- View Props Interfaces ---
-type View = 'home' | 'setup' | 'battle' | 'result' | 'history' | 'history_detail' | 'stats' | 'settings';
+type View = 'home' | 'setup' | 'battle' | 'result' | 'history' | 'history_detail' | 'stats' | 'settings' | 'debt' | 'debt_award';
 
 interface BaseProps {
   setCurrentView: (view: View) => void;
@@ -46,6 +48,7 @@ interface StatsProps extends Pick<BaseProps, 'setCurrentView'> {
 
 interface ResultProps extends StatsProps {
   finishedMatch: Match | null;
+  recordAward: (match: Match) => void;
 }
 
 interface HistoryProps extends StatsProps {
@@ -117,6 +120,7 @@ interface DeviceDiagnostics {
 // --- Functions ---
 const getMatchesRef = () => collection(db, 'families', FAMILY_ID, 'apps', 'quiz-battle', 'matches');
 const getPlayersRef = () => collection(db, 'families', FAMILY_ID, 'apps', 'quiz-battle', 'players');
+const debtEntriesRef = collection(db, 'families', FAMILY_ID, 'apps', 'quiz-battle', 'debtEntries');
 
 const getDeviceDiagnostics = (lastAudioTest: AudioTestResult): DeviceDiagnostics => {
   const userAgent = navigator.userAgent;
@@ -234,7 +238,7 @@ const HomeView = ({ battleState, setBattleState, setCurrentView, isSampleMode, s
   };
 
   return (
-    <div className="flex flex-col h-full bg-slate-50">
+    <div className="flex flex-col h-full overflow-y-auto bg-slate-50">
       <div className="bg-blue-600 text-white p-6 rounded-b-3xl shadow-md">
         <h1 className="text-3xl font-bold mb-2">クイズ対戦</h1>
         <p className="text-blue-100 opacity-90">親子や兄弟で楽しく学ぼう！</p>
@@ -262,6 +266,11 @@ const HomeView = ({ battleState, setBattleState, setCurrentView, isSampleMode, s
           className="w-full bg-blue-500 hover:bg-blue-600 active:scale-95 transition-transform text-white p-6 rounded-2xl shadow flex items-center justify-center gap-3 text-xl font-bold"
         >
           <Play className="w-8 h-8" /> 新しい対戦を始める
+        </button>
+
+        <button onClick={() => setCurrentView('debt')}
+          className="w-full flex items-center justify-center gap-3 rounded-2xl bg-indigo-100 p-4 text-lg font-bold text-indigo-800">
+          <Award className="w-6 h-6" /> 賞金・借金台帳
         </button>
 
         <div className="grid grid-cols-2 gap-4">
@@ -428,7 +437,7 @@ const SetupView = ({ players, setBattleState, setCurrentView, setErrorMsg }: Set
   );
 };
 
-const ResultView = ({ finishedMatch, matches, players, setCurrentView }: ResultProps) => {
+const ResultView = ({ finishedMatch, matches, players, setCurrentView, recordAward }: ResultProps) => {
   const latestMatch = finishedMatch || matches[0];
   if (!latestMatch) return <div className="p-5">読込中...</div>;
 
@@ -481,6 +490,10 @@ const ResultView = ({ finishedMatch, matches, players, setCurrentView }: ResultP
             )}
 
             <div className="flex flex-col gap-3 mt-6">
+               <button onClick={() => recordAward(latestMatch)}
+                 className="w-full rounded-xl bg-indigo-100 p-4 font-bold text-indigo-800">
+                 賞金を記録する
+               </button>
               <button 
                 onClick={() => setCurrentView('setup')}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-lg p-4 rounded-xl shadow-md active:scale-95 transition-transform flex items-center justify-center gap-2"
@@ -1317,6 +1330,7 @@ export default function App() {
   const battleState = savedBattleState ?? null;
   const hasInvalidBattleState = savedBattleState === undefined;
   const [finishedMatch, setFinishedMatch] = useState<Match | null>(null);
+  const [awardSeed, setAwardSeed] = useState<ReturnType<typeof matchAward> | null>(null);
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null);
   const [appError, setAppError] = useState('');
 
@@ -1619,6 +1633,20 @@ export default function App() {
             matches={matches} 
             players={players} 
             setCurrentView={setCurrentView} 
+            recordAward={match => {
+              setAwardSeed(matchAward(match, players));
+              setCurrentView('debt_award');
+            }}
+          />
+        )}
+        {(currentView === 'debt' || currentView === 'debt_award') && (
+          <DebtLedgerView
+            key={isSampleMode ? 'sample' : user?.uid}
+            ledger={isSampleMode ? null : debtEntriesRef}
+            actor={isSampleMode ? 'sample' : user!.uid}
+            seed={currentView === 'debt_award' ? awardSeed : null}
+            today={getLocalDateString()}
+            onExit={() => setCurrentView(currentView === 'debt_award' ? 'result' : 'home')}
           />
         )}
         {currentView === 'history' && (
